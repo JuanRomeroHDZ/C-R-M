@@ -1,49 +1,83 @@
+import asyncio
+import logging
 import os
-import sys
 import time
+from contextlib import asynccontextmanager
 from typing import Dict, Any
 from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-import psycopg
-import redis
+from src.config import settings
+from src.db.connection import get_db_connection
+from src.db.schema import init_database_schema
+from src.queue.worker import worker_instance
+from src.queue.redis_queue import queue_manager
+from src.api.categories import router as categories_router
+from src.api.jobs import router as jobs_router
+from src.api.leads import router as leads_router
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(asctime)s] [%(levelname)s] [%(name)s]: %(message)s"
+)
+logger = logging.getLogger("crm.main")
+
+START_TIME = time.time()
+worker_task = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info("Initializing database schema and seeds...")
+    try:
+        init_database_schema()
+        logger.info("Database initialized successfully.")
+    except Exception as e:
+        logger.error(f"Failed to initialize database schema: {e}")
+
+    # Start background worker loop
+    global worker_task
+    worker_task = asyncio.create_task(worker_instance.run_worker_loop())
+    logger.info("Background extraction worker started.")
+
+    yield
+
+    # Shutdown
+    logger.info("Shutting down extraction worker...")
+    worker_instance.is_running = False
+    if worker_task:
+        worker_task.cancel()
+    await worker_instance.gmaps_extractor.close()
+    await queue_manager.close()
+    logger.info("Shutdown completed.")
+
 
 app = FastAPI(
     title="CRM Engine API",
     description="Backend API for Local Lead Acquisition, Prospecting and CRM",
-    version="1.0.0",
+    version="2.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=lifespan
 )
 
-cors_origins = os.getenv("CORS_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-POSTGRES_HOST = os.getenv("POSTGRES_HOST", "db")
-POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
-POSTGRES_DB = os.getenv("POSTGRES_DB", "crm_db")
-POSTGRES_USER = os.getenv("POSTGRES_USER", "crm_user")
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "crm_password")
-
-REDIS_HOST = os.getenv("REDIS_HOST", "redis")
-REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
-REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
-
-START_TIME = time.time()
+# Include Routers
+app.include_router(categories_router)
+app.include_router(jobs_router)
+app.include_router(leads_router)
 
 
 def check_postgres() -> Dict[str, Any]:
     try:
-        conninfo = (
-            f"host={POSTGRES_HOST} port={POSTGRES_PORT} dbname={POSTGRES_DB} "
-            f"user={POSTGRES_USER} password={POSTGRES_PASSWORD} connect_timeout=3"
-        )
-        with psycopg.connect(conninfo) as conn:
+        with get_db_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT 1;")
                 cur.fetchone()
@@ -52,15 +86,10 @@ def check_postgres() -> Dict[str, Any]:
         return {"status": "error", "message": str(exc)}
 
 
-def check_redis() -> Dict[str, Any]:
+async def check_redis() -> Dict[str, Any]:
     try:
-        r = redis.Redis(
-            host=REDIS_HOST,
-            port=REDIS_PORT,
-            password=REDIS_PASSWORD if REDIS_PASSWORD else None,
-            socket_timeout=3
-        )
-        if r.ping():
+        r = await queue_manager.get_client()
+        if await r.ping():
             return {"status": "connected"}
         return {"status": "unreachable"}
     except Exception as exc:
@@ -68,10 +97,10 @@ def check_redis() -> Dict[str, Any]:
 
 
 @app.get("/health")
-def health(response: Response) -> Dict[str, Any]:
+async def health(response: Response) -> Dict[str, Any]:
     pg_status = check_postgres()
-    rd_status = check_redis()
-    
+    rd_status = await check_redis()
+
     is_healthy = pg_status["status"] == "connected" and rd_status["status"] == "connected"
     if not is_healthy:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
@@ -92,10 +121,10 @@ def health(response: Response) -> Dict[str, Any]:
 def system_status() -> Dict[str, Any]:
     return {
         "system": "Sistema de Captacion, Prospeccion y CRM Local",
-        "version": "1.0.0",
-        "phase": "Fase 1 - Infraestructura, Docker Compose y Gestion de Puertos",
+        "version": "2.0.0",
+        "phase": "Fase 2 - Motor de Extraccion Geolocalizado Hibrido (OSM + Google Maps)",
         "city_coverage": "Tijuana, Baja California",
-        "environment": os.getenv("ENVIRONMENT", "production"),
+        "environment": settings.ENVIRONMENT,
         "status": "operational"
     }
 

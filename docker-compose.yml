@@ -60,6 +60,8 @@ services:
       SCRAPER_CONCURRENCY_LIMIT: ${SCRAPER_CONCURRENCY_LIMIT:-5}
     ports:
       - "${HOST_BIND_IP:-127.0.0.1}:${HOST_PORT_BACKEND}:8000"
+    volumes:
+      - ./backend/src:/app/src
     networks:
       - crm_network
     depends_on:

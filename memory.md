@@ -16,7 +16,21 @@ Documento de referencia para navegacion e indexacion por agentes de inteligencia
 - `backend/Dockerfile`: Definicion de contenedor Docker basado en Python 3.12 Debian Bookworm para ejecutar la aplicacion backend de forma aislada.
 - `backend/requirements.txt`: Lista de dependencias de Python para FastAPI, servidor Uvicorn, controladores asincronos de PostgreSQL, Redis y cliente HTTP.
 - `backend/src/`: Codigo fuente del backend que encapsula la logica de negocio, controladores de API y modulos de integracion.
-- `backend/src/main.py`: Punto de entrada FastAPI con middleware CORS y endpoints de salud que verifican conectividad con PostgreSQL y Redis.
+- `backend/src/main.py`: Punto de entrada FastAPI con ciclo de vida lifespan, routers de categorias, trabajos y prospectos, y endpoints de salud.
+- `backend/src/config.py`: Gestor central de configuraciones y variables de entorno para conexiones a PostgreSQL, Redis, limites de concurrencia y parametros del scraper.
+- `backend/src/db/connection.py`: Proveedor de conexiones seguras y transaccionales hacia PostgreSQL mediante cursores basados en diccionarios para consultas parametrizadas.
+- `backend/src/db/schema.py`: Migraciones DDL para tablas de categorias, palabras clave, etiquetas OSM, trabajos de extraccion, cuadriculas y prospectos, incluyendo semillas iniciales.
+- `backend/src/models/schemas.py`: Esquemas Pydantic para validacion y serializacion de categorias, trabajos de extraccion, telemetria en tiempo real y prospectos capturados.
+- `backend/src/geo/bounds.py`: Delimitacion perimetral de Tijuana y definicion de coordenadas limite para macro-zonas estrategicas como Zona Rio, Centro y Otay.
+- `backend/src/geo/quadtree.py`: Algoritmo de subdivision adaptativa de cuadriculas espaciales en cuatro sub-cuadrantes al detectar saturacion comercial en celdas.
+- `backend/src/extractors/osm_engine.py`: Sub-motor de extraccion para OpenStreetMap con generador Overpass QL, rotacion de servidores espejo y analisis de etiquetas comerciales.
+- `backend/src/extractors/gmaps_engine.py`: Sub-motor de extraccion profunda para Google Maps con Playwright headless, intercepcion de recursos pesados y cortacircuitos de seguridad.
+- `backend/src/queue/redis_queue.py`: Gestor de colas en Redis que controla la maquina de estados de trabajos, encolamiento de celdas y pausas en caliente.
+- `backend/src/queue/worker.py`: Trabajador en segundo plano que procesa celdas geograficas, ejecuta extraccion hibrida, particion adaptativa y persistencia con manejo de conflictos.
+- `backend/src/api/categories.py`: Endpoints REST para operaciones CRUD sobre categorias comerciales, bancos de sinonimos y mapeos de etiquetas OpenStreetMap.
+- `backend/src/api/jobs.py`: Endpoints para crear barridos geograficos, pausar, reanudar o cancelar trabajos de extraccion y consultar telemetria en tiempo real.
+- `backend/src/api/leads.py`: Endpoints para consultar y filtrar prospectos capturados con soporte de paginacion, filtros por categoria y exclusion de borrado logico.
+- `backend/src/verify_extraction.py`: Rutina de verificacion ejecutable para comprobar la extraccion real de prospectos en Zona Rio sin emplear datos simulados.
 - `frontend/`: Directorio del servicio web cliente con interfaz responsiva, ligera y estetica minimalista en escala de grises.
 - `frontend/Dockerfile`: Imagen ligera Nginx Alpine encargada de servir los archivos estaticos del frontend con comprobacion de salud integrada.
 - `frontend/nginx.conf`: Configuracion del servidor Nginx local para entregar la aplicacion web estatica con politicas basicas de cache.
