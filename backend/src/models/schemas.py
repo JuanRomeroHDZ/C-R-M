@@ -158,3 +158,16 @@ class LeadOut(BaseModel):
     updated_at: datetime
     last_seen_at: datetime
     is_deleted: bool
+    deleted_at: Optional[datetime] = None
+    deleted_reason: Optional[str] = None
+    stage_entered_at: Optional[datetime] = None
+    last_activity_at: Optional[datetime] = None
+    postponed_until: Optional[datetime] = None
+    postponed_note: Optional[str] = None
+    regret_reason: Optional[str] = None
+    regret_details: Optional[str] = None
+    regret_amount: Optional[float] = None
+    regret_service: Optional[str] = None
+    loss_reason: Optional[str] = None
+    is_stagnant: bool = False
+    stagnant_hours: int = 0

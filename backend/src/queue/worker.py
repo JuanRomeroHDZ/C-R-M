@@ -23,6 +23,26 @@ logger = logging.getLogger("crm.queue.worker")
 
 
 def save_lead(lead: Dict[str, Any]) -> str:
+    phone_clean = lead.get("phone_normalized") or lead.get("phone_raw")
+    ext_id = lead.get("external_id")
+    norm_domain = lead.get("normalized_domain")
+
+    # Immunity check against soft-deleted / blacklisted leads
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT 1 FROM blacklist_identifiers
+                WHERE (phone_e164 IS NOT NULL AND phone_e164 = %s)
+                   OR (external_id IS NOT NULL AND external_id = %s)
+                   OR (normalized_domain IS NOT NULL AND normalized_domain = %s)
+                LIMIT 1;
+                """,
+                (phone_clean, ext_id, norm_domain)
+            )
+            if cur.fetchone():
+                return "skipped"
+
     subcategories_json = json.dumps(lead.get("subcategories", []))
     metadata_json = json.dumps(lead.get("extra_metadata", {}))
 

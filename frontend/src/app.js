@@ -1,30 +1,36 @@
 // ==============================================================================
 // Sistema de Captacion, Prospeccion y CRM Local - Frontend Application
-// Version: 4.0.0
+// Version: 5.0.0
+// Pipeline Comercial de 12 Fases, Kanban, Ficha Integral y Doble Confirmacion
 // Estilo: Notion / Obsidian Slate Neutro (Cero Emojis, Iconos Lucide SVG)
 // ==============================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
   // Application State
   const state = {
+    stages: [],
+    board: {},
     leads: [],
-    filteredLeads: [],
-    events: [],
+    trashLeads: [],
+    activeCategory: '',
+    searchQuery: '',
+    currentView: 'leads',       // 'leads', 'calendar', 'settings'
+    leadViewMode: 'kanban',     // 'kanban', 'table', 'trash'
+    activeMobileStage: 'EXTRACTED',
+    selectedLead: null,
+    draggedLeadId: null,
+    pendingStageTransition: null,
+    pendingDestructiveAction: null,
     settings: {
       whatsapp_template: 'Hola, buen dia.',
-      lan_ip: '192.168.100.96',
-      proxy_port: '32662',
-      lan_url: 'http://192.168.100.96:32662',
-      local_url: 'http://localhost:32662'
-    },
-    activeCategory: '',
-    activeStage: '',
-    searchQuery: '',
-    currentView: 'leads',
-    selectedLeadForAudit: null
+      lan_ip: window.location.hostname,
+      proxy_port: window.location.port || '80',
+      lan_url: window.location.origin,
+      local_url: window.location.origin
+    }
   };
 
-  // DOM Elements - Shell & Navigation
+  // DOM Elements - Shell & Nav
   const pageTitle = document.getElementById('page-title');
   const navBtnLeads = document.getElementById('nav-btn-leads');
   const navBtnCalendar = document.getElementById('nav-btn-calendar');
@@ -44,33 +50,105 @@ document.addEventListener('DOMContentLoaded', () => {
   const viewCalendar = document.getElementById('view-calendar');
   const viewSettings = document.getElementById('view-settings');
 
-  // DOM Elements - Controls & Filters
+  // Controls & Filters
   const leadsSearchInput = document.getElementById('leads-search-input');
   const categoryFilters = document.getElementById('category-filters');
-  const stageFilterSelect = document.getElementById('stage-filter-select');
-  const leadsGridContainer = document.getElementById('leads-grid-container');
-  const leadsEmptyState = document.getElementById('leads-empty-state');
+  const btnToggleKanban = document.getElementById('btn-toggle-kanban');
+  const btnToggleTable = document.getElementById('btn-toggle-table');
+  const btnToggleTrash = document.getElementById('btn-toggle-trash');
+  const trashCounter = document.getElementById('trash-counter');
   const statTotalLeads = document.getElementById('stat-total-leads');
   const statWhatsappLeads = document.getElementById('stat-whatsapp-leads');
-  const statQualifiedLeads = document.getElementById('stat-qualified-leads');
+  const statStagnantLeads = document.getElementById('stat-stagnant-leads');
+  const statDueLeads = document.getElementById('stat-due-leads');
+  const mobileStageTabs = document.getElementById('mobile-stage-tabs');
+  const kanbanBoardContainer = document.getElementById('kanban-board-container');
+  const denseTableContainer = document.getElementById('dense-table-container');
+  const denseTableBody = document.getElementById('dense-table-body');
+  const leadsEmptyState = document.getElementById('leads-empty-state');
+  const topBtnNewLead = document.getElementById('top-btn-new-lead');
+  const topBtnNewEvent = document.getElementById('top-btn-new-event');
+  const topBtnRefresh = document.getElementById('top-btn-refresh');
 
-  // DOM Elements - Calendar
+  // Drawer (Ficha Integral)
+  const drawerLeadDetail = document.getElementById('drawer-lead-detail');
+  const drawerClose = document.getElementById('drawer-close');
+  const drawerLeadName = document.getElementById('drawer-lead-name');
+  const drawerLeadCategory = document.getElementById('drawer-lead-category');
+  const drawerCurrentStage = document.getElementById('drawer-current-stage');
+  const drawerProbScore = document.getElementById('drawer-prob-score');
+  const drawerStageSelect = document.getElementById('drawer-stage-select');
+  const drawerActionBar = document.getElementById('drawer-action-bar');
+  const drawerPhone = document.getElementById('drawer-phone');
+  const drawerWebsite = document.getElementById('drawer-website');
+  const drawerEmail = document.getElementById('drawer-email');
+  const drawerAddress = document.getElementById('drawer-address');
+  const drawerReviews = document.getElementById('drawer-reviews');
+  const drawerHealthScore = document.getElementById('drawer-health-score');
+  const drawerSalesArgsList = document.getElementById('drawer-sales-args-list');
+  const drawerStagnationAlert = document.getElementById('drawer-stagnation-alert');
+  const drawerPostponedAlert = document.getElementById('drawer-postponed-alert');
+  const drawerNotesCount = document.getElementById('drawer-notes-count');
+  const drawerNotesList = document.getElementById('drawer-notes-list');
+  const formDrawerNote = document.getElementById('form-drawer-note');
+  const drawerNoteContent = document.getElementById('drawer-note-content');
+  const drawerTimelineFeed = document.getElementById('drawer-timeline-feed');
+  const drawerBtnDelete = document.getElementById('drawer-btn-delete');
+  const drawerBtnRestore = document.getElementById('drawer-btn-restore');
+  const drawerBtnPurge = document.getElementById('drawer-btn-purge');
+  const drawerBtnResetHistory = document.getElementById('drawer-btn-reset-history');
+
+  // Stage Action Modal
+  const modalStageAction = document.getElementById('modal-stage-action');
+  const modalStageActionClose = document.getElementById('modal-stage-action-close');
+  const modalStageActionCancel = document.getElementById('modal-stage-action-cancel');
+  const formStageAction = document.getElementById('form-stage-action');
+  const stageActionTitle = document.getElementById('stage-action-title');
+  const stageActionPostponedFields = document.getElementById('stage-action-postponed-fields');
+  const stagePostponedDate = document.getElementById('stage-postponed-date');
+  const stagePostponedNote = document.getElementById('stage-postponed-note');
+  const stageActionRegrettedFields = document.getElementById('stage-action-regretted-fields');
+  const stageRegretReason = document.getElementById('stage-regret-reason');
+  const stageRegretAmount = document.getElementById('stage-regret-amount');
+  const stageRegretService = document.getElementById('stage-regret-service');
+  const stageRegretDetails = document.getElementById('stage-regret-details');
+  const stageActionLostFields = document.getElementById('stage-action-lost-fields');
+  const stageLossReason = document.getElementById('stage-loss-reason');
+  const stageGenericNote = document.getElementById('stage-generic-note');
+
+  // Double Confirmation Modal
+  const modalDoubleConfirm = document.getElementById('modal-double-confirm');
+  const confirmModalTitle = document.getElementById('confirm-modal-title');
+  const confirmModalClose = document.getElementById('confirm-modal-close');
+  const confirmStep1 = document.getElementById('confirm-step-1');
+  const confirmStep2 = document.getElementById('confirm-step-2');
+  const confirmWarningText = document.getElementById('confirm-warning-text');
+  const confirmBtnCancel1 = document.getElementById('confirm-btn-cancel-1');
+  const confirmBtnCancel2 = document.getElementById('confirm-btn-cancel-2');
+  const confirmBtnNext = document.getElementById('confirm-btn-next');
+  const confirmBtnExecute = document.getElementById('confirm-btn-execute');
+
+  // Manual Lead Creation Modal
+  const modalNewLead = document.getElementById('modal-new-lead');
+  const modalNewLeadClose = document.getElementById('modal-new-lead-close');
+  const modalNewLeadCancel = document.getElementById('modal-new-lead-cancel');
+  const formNewLead = document.getElementById('form-new-lead');
+  const newLeadName = document.getElementById('new-lead-name');
+  const newLeadCat = document.getElementById('new-lead-cat');
+  const newLeadPhone = document.getElementById('new-lead-phone');
+  const newLeadWebsite = document.getElementById('new-lead-website');
+  const newLeadEmail = document.getElementById('new-lead-email');
+  const newLeadAddress = document.getElementById('new-lead-address');
+  const newLeadNotes = document.getElementById('new-lead-notes');
+  const leadDupAlert = document.getElementById('lead-dup-alert');
+  const leadDupMsg = document.getElementById('lead-dup-msg');
+
+  // Calendar DOM
   const calendarEventsList = document.getElementById('calendar-events-list');
   const calendarEmptyState = document.getElementById('calendar-empty-state');
   const imminentAlertsBanner = document.getElementById('imminent-alerts-banner');
   const btnRequestNotifications = document.getElementById('btn-request-notifications');
-  const topBtnNewEvent = document.getElementById('top-btn-new-event');
   const btnCalendarAddEvent = document.getElementById('btn-calendar-add-event');
-  const topBtnRefresh = document.getElementById('top-btn-refresh');
-
-  // DOM Elements - Settings
-  const settingsWhatsappTemplate = document.getElementById('settings-whatsapp-template');
-  const btnSaveWhatsappTemplate = document.getElementById('btn-save-whatsapp-template');
-  const linkLocalPc = document.getElementById('link-local-pc');
-  const linkLanMobile = document.getElementById('link-lan-mobile');
-  const btnCopyLanUrl = document.getElementById('btn-copy-lan-url');
-
-  // DOM Elements - Modals
   const modalEvent = document.getElementById('modal-event');
   const modalEventClose = document.getElementById('modal-event-close');
   const modalEventCancel = document.getElementById('modal-event-cancel');
@@ -79,15 +157,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const eventStartTimeInput = document.getElementById('event-start-time');
   const eventEndTimeInput = document.getElementById('event-end-time');
 
-  const modalAudit = document.getElementById('modal-audit');
-  const modalAuditClose = document.getElementById('modal-audit-close');
-  const modalAuditDone = document.getElementById('modal-audit-done');
-  const modalAuditLeadName = document.getElementById('modal-audit-lead-name');
-  const modalHealthScore = document.getElementById('modal-health-score');
-  const modalProbScore = document.getElementById('modal-prob-score');
-  const modalChannelsList = document.getElementById('modal-channels-list');
-  const modalSalesArguments = document.getElementById('modal-sales-arguments');
-  const modalActivityLog = document.getElementById('modal-activity-log');
+  // Settings DOM
+  const settingsWhatsappTemplate = document.getElementById('settings-whatsapp-template');
+  const btnSaveWhatsappTemplate = document.getElementById('btn-save-whatsapp-template');
+  const linkLocalPc = document.getElementById('link-local-pc');
+  const linkLanMobile = document.getElementById('link-lan-mobile');
+  const btnCopyLanUrl = document.getElementById('btn-copy-lan-url');
 
   // ============================================================================
   // 1. Live Reload WebSocket Client
@@ -112,11 +187,9 @@ document.addEventListener('DOMContentLoaded', () => {
           try {
             const data = JSON.parse(event.data);
             if (data.action === 'reload') {
-              console.log('[DevReload] Recibida senal de recarga automatica.');
               window.location.reload();
             }
           } catch (e) {
-            // Mensaje de texto plano
             if (event.data === 'reload') {
               window.location.reload();
             }
@@ -142,69 +215,40 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ============================================================================
-  // 2. Navigation & View Switcher
+  // 2. Data Fetching
   // ============================================================================
-  function switchView(viewName) {
-    state.currentView = viewName;
+  async function loadInitialData() {
+    await Promise.all([
+      loadStages(),
+      loadSettings(),
+      loadPipelineBoard(),
+      loadTrashCount(),
+      loadCalendarEvents(),
+      loadAlerts()
+    ]);
+  }
 
-    // Toggle panels
-    if (viewLeads) viewLeads.style.display = viewName === 'leads' ? 'block' : 'none';
-    if (viewCalendar) viewCalendar.style.display = viewName === 'calendar' ? 'flex' : 'none';
-    if (viewSettings) viewSettings.style.display = viewName === 'settings' ? 'block' : 'none';
-
-    // Update Desktop Nav Active Classes
-    [navBtnLeads, navBtnCalendar, navBtnSettings].forEach(btn => {
-      if (btn) {
-        if (btn.dataset.view === viewName) {
-          btn.classList.add('active');
-        } else {
-          btn.classList.remove('active');
-        }
+  async function loadStages() {
+    try {
+      const res = await fetch('/api/v1/pipeline/stages');
+      if (res.ok) {
+        const data = await res.json();
+        state.stages = data.stages;
+        populateStageDropdowns(data.stages);
+        renderMobileStageTabs(data.stages);
       }
-    });
-
-    // Update Mobile Nav Active Classes
-    [mobNavLeads, mobNavCalendar, mobNavSettings].forEach(btn => {
-      if (btn) {
-        if (btn.dataset.view === viewName) {
-          btn.classList.add('active');
-        } else {
-          btn.classList.remove('active');
-        }
-      }
-    });
-
-    // Update Top Title
-    if (pageTitle) {
-      if (viewName === 'leads') pageTitle.textContent = 'Directorio de Prospectos Calificados';
-      else if (viewName === 'calendar') pageTitle.textContent = 'Agenda de Citas y Seguimientos';
-      else if (viewName === 'settings') pageTitle.textContent = 'Configuracion de Canales y Red';
-    }
-
-    if (viewName === 'calendar') {
-      loadCalendarEvents();
-      loadAlerts();
+    } catch (e) {
+      console.error('[Stages] Error al cargar fases:', e);
     }
   }
 
-  // Bind Navigation Listeners
-  [navBtnLeads, mobNavLeads].forEach(el => el && el.addEventListener('click', () => switchView('leads')));
-  [navBtnCalendar, mobNavCalendar].forEach(el => el && el.addEventListener('click', () => switchView('calendar')));
-  [navBtnSettings, mobNavSettings].forEach(el => el && el.addEventListener('click', () => switchView('settings')));
-
-  // ============================================================================
-  // 3. Data Fetching
-  // ============================================================================
   async function loadSettings() {
     try {
       const res = await fetch('/api/v1/settings');
       if (res.ok) {
         const data = await res.json();
         state.settings = data;
-
-        if (settingsWhatsappTemplate) {
-          settingsWhatsappTemplate.value = data.whatsapp_template || 'Hola, buen dia.';
-        }
+        if (settingsWhatsappTemplate) settingsWhatsappTemplate.value = data.whatsapp_template || 'Hola, buen dia.';
         if (linkLocalPc) {
           linkLocalPc.href = data.local_url;
           linkLocalPc.textContent = data.local_url;
@@ -214,25 +258,47 @@ document.addEventListener('DOMContentLoaded', () => {
           linkLanMobile.textContent = data.lan_url;
         }
         if (sidebarLanLabel) {
-          sidebarLanLabel.textContent = `${data.lan_ip}:${data.proxy_port}`;
+          sidebarLanLabel.textContent = data.lan_ip;
         }
       }
-    } catch (err) {
-      console.error('[Settings] Error al cargar configuracion:', err);
+    } catch (e) {
+      console.error('[Settings] Error al cargar configuracion:', e);
     }
   }
 
-  async function loadLeads() {
+  async function loadPipelineBoard() {
     try {
-      const res = await fetch('/api/v1/leads?limit=200');
+      let url = '/api/v1/pipeline/board';
+      if (state.activeCategory) url += `?category_slug=${encodeURIComponent(state.activeCategory)}`;
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
-        state.leads = data;
-        populateLeadSelect(data);
-        applyFilters();
+        state.board = data.board;
+        // Flatten leads for table/stats
+        const allLeads = [];
+        for (const col of Object.values(data.board)) {
+          allLeads.push(...col.leads);
+        }
+        state.leads = allLeads;
+        updatePipelineStats();
+        populateLeadSelect(allLeads);
+        renderCurrentViewMode();
       }
-    } catch (err) {
-      console.error('[Leads] Error al cargar prospectos:', err);
+    } catch (e) {
+      console.error('[Board] Error al cargar tablero:', e);
+    }
+  }
+
+  async function loadTrashCount() {
+    try {
+      const res = await fetch('/api/v1/leads/trash/list');
+      if (res.ok) {
+        const trash = await res.json();
+        state.trashLeads = trash;
+        if (trashCounter) trashCounter.textContent = trash.length;
+      }
+    } catch (e) {
+      console.error('[Trash] Error al consultar papelera:', e);
     }
   }
 
@@ -241,10 +307,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await fetch('/api/v1/calendar/events');
       if (res.ok) {
         const events = await res.json();
-        state.events = events;
         renderCalendarEvents(events);
+        const pending = events.filter(e => e.status === 'Pendiente' || e.status === 'PENDIENTE').length;
         if (badgeEventsCount) {
-          const pending = events.filter(e => e.status === 'PENDIENTE').length;
           if (pending > 0) {
             badgeEventsCount.textContent = pending;
             badgeEventsCount.style.display = 'inline-block';
@@ -253,8 +318,8 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         }
       }
-    } catch (err) {
-      console.error('[Calendar] Error al cargar eventos:', err);
+    } catch (e) {
+      console.error('[Calendar] Error al cargar agenda:', e);
     }
   }
 
@@ -270,313 +335,1106 @@ document.addEventListener('DOMContentLoaded', () => {
               <strong>Alerta de Cita Inminente:</strong> "${escapeHtml(first.title)}" inicia a las ${formatTime(first.start_time)}.
             `;
             imminentAlertsBanner.style.display = 'block';
-
-            // Disparar notificacion de escritorio si esta permitido
-            if (Notification.permission === 'granted') {
-              new Notification('Cita Inminente - CRM', {
-                body: `${first.title} con ${first.lead_name || 'prospecto'} a las ${formatTime(first.start_time)}`,
-                icon: '/favicon.ico'
-              });
-            }
           } else {
             imminentAlertsBanner.style.display = 'none';
           }
         }
       }
-    } catch (err) {
-      console.error('[Alerts] Error al cargar alertas:', err);
+    } catch (e) {
+      console.error('[Alerts] Error:', e);
     }
   }
 
   // ============================================================================
-  // 4. Filtering & Rendering Leads
+  // 3. Stats & Stage Dropdown Population
   // ============================================================================
-  function applyFilters() {
-    let filtered = [...state.leads];
+  function updatePipelineStats() {
+    const total = state.leads.length;
+    if (statTotalLeads) statTotalLeads.textContent = total;
+    if (badgeLeadsCount) badgeLeadsCount.textContent = total;
 
-    // Filter by Category
-    if (state.activeCategory) {
-      filtered = filtered.filter(l => l.category_slug === state.activeCategory);
+    const withWa = state.leads.filter(l => l.has_whatsapp !== false && (l.phone_e164 || l.phone_raw)).length;
+    if (statWhatsappLeads) statWhatsappLeads.textContent = withWa;
+
+    const stagnant = state.leads.filter(l => l.is_stagnant).length;
+    if (statStagnantLeads) statStagnantLeads.textContent = stagnant;
+
+    const due = state.leads.filter(l => {
+      if (!l.postponed_until) return false;
+      const dueTime = new Date(l.postponed_until).getTime();
+      return dueTime <= Date.now();
+    }).length;
+    if (statDueLeads) statDueLeads.textContent = due;
+  }
+
+  function populateStageDropdowns(stages) {
+    if (drawerStageSelect) {
+      drawerStageSelect.innerHTML = stages.map(s => `
+        <option value="${s.slug}">${s.step}. ${escapeHtml(s.name)}</option>
+      `).join('');
     }
+  }
 
-    // Filter by Stage
-    if (state.activeStage) {
-      filtered = filtered.filter(l => l.lifecycle_stage === state.activeStage);
-    }
+  function renderMobileStageTabs(stages) {
+    if (!mobileStageTabs) return;
+    mobileStageTabs.innerHTML = stages.map(s => {
+      const count = (state.board[s.slug] && state.board[s.slug].count) || 0;
+      const isActive = s.slug === state.activeMobileStage ? 'active' : '';
+      return `
+        <button class="stage-tab-pill ${isActive}" data-stage="${s.slug}">
+          <span>${s.step}. ${escapeHtml(s.name)}</span>
+          <span class="stage-tab-count">${count}</span>
+        </button>
+      `;
+    }).join('');
 
-    // Filter by Search Query
-    if (state.searchQuery.trim() !== '') {
-      const q = state.searchQuery.toLowerCase().trim();
-      filtered = filtered.filter(l => {
-        const name = (l.name || '').toLowerCase();
-        const address = (l.address_raw || '').toLowerCase();
-        const phone = (l.phone_raw || '').toLowerCase();
-        return name.includes(q) || address.includes(q) || phone.includes(q);
+    mobileStageTabs.querySelectorAll('.stage-tab-pill').forEach(btn => {
+      btn.addEventListener('click', () => {
+        mobileStageTabs.querySelectorAll('.stage-tab-pill').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.activeMobileStage = btn.dataset.stage;
+        renderKanbanBoard();
       });
-    }
-
-    state.filteredLeads = filtered;
-    updateStats(filtered);
-    renderLeads(filtered);
-  }
-
-  function updateStats(filtered) {
-    if (badgeLeadsCount) badgeLeadsCount.textContent = state.leads.length;
-    if (statTotalLeads) statTotalLeads.textContent = filtered.length;
-    if (statWhatsappLeads) {
-      const withWa = filtered.filter(l => l.has_whatsapp !== false && (l.phone_e164 || l.phone_raw)).length;
-      statWhatsappLeads.textContent = withWa;
-    }
-    if (statQualifiedLeads) {
-      const qualified = filtered.filter(l => l.acceptance_probability_pct && l.acceptance_probability_pct > 0).length;
-      statQualifiedLeads.textContent = qualified;
-    }
-  }
-
-  function renderLeads(leads) {
-    if (!leadsGridContainer) return;
-    leadsGridContainer.innerHTML = '';
-
-    if (leads.length === 0) {
-      if (leadsEmptyState) leadsEmptyState.style.display = 'block';
-      return;
-    }
-
-    if (leadsEmptyState) leadsEmptyState.style.display = 'none';
-
-    leads.forEach(lead => {
-      const card = createLeadCardElement(lead);
-      leadsGridContainer.appendChild(card);
     });
   }
 
-  function createLeadCardElement(lead) {
+  // ============================================================================
+  // 4. Kanban & Table Rendering
+  // ============================================================================
+  function renderCurrentViewMode() {
+    if (state.leadViewMode === 'kanban') {
+      if (kanbanBoardContainer) kanbanBoardContainer.style.display = 'flex';
+      if (denseTableContainer) denseTableContainer.style.display = 'none';
+      renderKanbanBoard();
+    } else if (state.leadViewMode === 'table') {
+      if (kanbanBoardContainer) kanbanBoardContainer.style.display = 'none';
+      if (denseTableContainer) denseTableContainer.style.display = 'block';
+      renderDenseTable(state.leads);
+    } else if (state.leadViewMode === 'trash') {
+      if (kanbanBoardContainer) kanbanBoardContainer.style.display = 'none';
+      if (denseTableContainer) denseTableContainer.style.display = 'block';
+      renderTrashTable(state.trashLeads);
+    }
+  }
+
+  function renderKanbanBoard() {
+    if (!kanbanBoardContainer) return;
+    kanbanBoardContainer.innerHTML = '';
+
+    const q = state.searchQuery.toLowerCase().trim();
+
+    state.stages.forEach(st => {
+      const colData = state.board[st.slug] || { leads: [], count: 0 };
+      let colLeads = colData.leads;
+
+      // Filter by search query if any
+      if (q) {
+        colLeads = colLeads.filter(l => {
+          return (l.name || '').toLowerCase().includes(q) ||
+                 (l.address_raw || '').toLowerCase().includes(q) ||
+                 (l.phone_raw || '').toLowerCase().includes(q);
+        });
+      }
+
+      const colEl = document.createElement('div');
+      colEl.className = 'kanban-column';
+      colEl.dataset.stage = st.slug;
+
+      // On mobile, hide columns that do not match active mobile tab
+      if (window.innerWidth <= 900 && st.slug !== state.activeMobileStage) {
+        colEl.style.display = 'none';
+      }
+
+      colEl.innerHTML = `
+        <div class="kanban-column-header">
+          <span class="kanban-column-title">${st.step}. ${escapeHtml(st.name)}</span>
+          <span class="kanban-column-count">${colLeads.length}</span>
+        </div>
+        <div class="kanban-cards-list" data-stage="${st.slug}">
+          <!-- Cards rendered here -->
+        </div>
+      `;
+
+      const listEl = colEl.querySelector('.kanban-cards-list');
+
+      // Drag over and drop handlers
+      listEl.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        colEl.classList.add('drag-over');
+      });
+      listEl.addEventListener('dragleave', () => {
+        colEl.classList.remove('drag-over');
+      });
+      listEl.addEventListener('drop', (e) => {
+        e.preventDefault();
+        colEl.classList.remove('drag-over');
+        if (state.draggedLeadId) {
+          triggerStageTransition(state.draggedLeadId, st.slug);
+        }
+      });
+
+      colLeads.forEach(lead => {
+        const cardEl = createKanbanCard(lead, st.slug);
+        listEl.appendChild(cardEl);
+      });
+
+      kanbanBoardContainer.appendChild(colEl);
+    });
+
+    // Update counts on mobile tabs
+    renderMobileStageTabs(state.stages);
+  }
+
+  function createKanbanCard(lead, currentStageSlug) {
     const card = document.createElement('div');
-    card.className = 'lead-card';
-    card.id = `lead-card-${lead.id}`;
+    card.className = 'kanban-card';
+    card.draggable = true;
+    card.dataset.leadId = lead.id;
 
-    // Score classification
-    const prob = lead.acceptance_probability_pct != null ? Math.round(lead.acceptance_probability_pct) : 0;
-    let scoreBadgeClass = 'low';
-    if (prob >= 70) scoreBadgeClass = 'high';
-    else if (prob >= 40) scoreBadgeClass = 'med';
+    // Drag events
+    card.addEventListener('dragstart', (e) => {
+      state.draggedLeadId = lead.id;
+      card.classList.add('dragging');
+      e.dataTransfer.setData('text/plain', lead.id);
+    });
+    card.addEventListener('dragend', () => {
+      card.classList.remove('dragging');
+      state.draggedLeadId = null;
+    });
 
-    // Arguments or findings
-    const args = Array.isArray(lead.sales_arguments) ? lead.sales_arguments.slice(0, 2) : [];
-    let findingsHtml = '';
-    if (args.length > 0) {
-      findingsHtml = `
-        <div class="findings-box">
-          <ul>
-            ${args.map(a => `<li>${escapeHtml(a)}</li>`).join('')}
-          </ul>
+    // Score badge
+    const prob = Math.round(lead.acceptance_probability_pct || 0);
+    let scoreClass = 'low';
+    if (prob >= 70) scoreClass = 'high';
+    else if (prob >= 40) scoreClass = 'med';
+
+    // Alerts
+    let alertsHtml = '';
+    if (lead.is_stagnant) {
+      alertsHtml += `
+        <div class="stagnant-badge" title="Sin actividad por mas de 48 horas">
+          <svg style="width:11px;height:11px;" stroke="currentColor" fill="none"><use href="#icon-clock"/></svg>
+          ${lead.stagnant_hours}h sin contacto
         </div>
       `;
     }
-
-    // Phone / WhatsApp resolution
-    const phoneDisplay = lead.phone_e164 || lead.phone_raw || 'Sin telefono registrado';
-    const cleanPhone = (lead.phone_e164 || lead.phone_raw || '').replace(/[^0-9]/g, '');
-    const hasPhone = cleanPhone.length >= 10;
-    const isWaAvailable = lead.has_whatsapp !== false && hasPhone;
-
-    // Contact action buttons
-    const template = state.settings.whatsapp_template || 'Hola, buen dia.';
-    const customMessage = template.replace(/{nombre}/g, lead.name || '');
-    const waUrl = isWaAvailable ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(customMessage)}` : '#';
-
-    // Social Links
-    const socials = lead.social_links || {};
-    let socialButtonsHtml = '';
-    for (const [platform, link] of Object.entries(socials)) {
-      if (link && typeof link === 'string' && link.startsWith('http')) {
-        socialButtonsHtml += `
-          <a href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer" class="btn-icon-only" title="${platform}">
-            <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-share-2"/></svg>
-          </a>
-        `;
-      }
-    }
-
-    // Website button
-    let websiteButtonHtml = '';
-    if (lead.website) {
-      websiteButtonHtml = `
-        <a href="${escapeHtml(lead.website)}" target="_blank" rel="noopener noreferrer" class="btn-icon-only" title="Sitio Web">
-          <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-globe"/></svg>
-        </a>
+    if (lead.postponed_until) {
+      const isPast = new Date(lead.postponed_until).getTime() <= Date.now();
+      alertsHtml += `
+        <div class="${isPast ? 'due-badge' : 'stagnant-badge'}" title="Reactivacion: ${escapeHtml(lead.postponed_until)}">
+          <svg style="width:11px;height:11px;" stroke="currentColor" fill="none"><use href="#icon-bell"/></svg>
+          ${isPast ? 'Reactivar hoy' : 'En espera'}
+        </div>
       `;
     }
 
     card.innerHTML = `
-      <div>
-        <div class="card-top">
-          <div>
-            <div class="lead-name">${escapeHtml(lead.name)}</div>
-            <div class="lead-cat">${escapeHtml(lead.primary_category || lead.category_slug)} &bull; ${escapeHtml(lead.lifecycle_stage)}</div>
-          </div>
-          <div class="score-badge ${scoreBadgeClass}" title="Probabilidad de aceptacion de propuesta">
-            ${prob}% Exito
-          </div>
-        </div>
-
-        <div class="meta-stats" style="margin-top: 8px;">
-          <span style="display: flex; align-items: center; gap: 4px;">
-            <svg style="width:12px;height:12px;" stroke="currentColor" fill="none"><use href="#icon-phone"/></svg>
-            ${escapeHtml(phoneDisplay)}
-          </span>
-          ${lead.rating ? `<span>&bull;</span> <span>${lead.rating.toFixed(1)} (${lead.review_count || 0})</span>` : ''}
-        </div>
-
-        ${lead.address_raw ? `
-          <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px; line-height: 1.3;">
-            ${escapeHtml(lead.address_raw)}
-          </div>
-        ` : ''}
-
-        ${findingsHtml}
+      <div class="kanban-card-top">
+        <div class="kanban-card-name">${escapeHtml(lead.name)}</div>
+        <span class="score-badge ${scoreClass}">${prob}%</span>
       </div>
 
-      <div class="action-bar">
-        ${isWaAvailable ? `
-          <button class="btn-action btn-whatsapp" data-action="whatsapp" data-id="${lead.id}" data-url="${waUrl}">
-            <svg style="width:14px;height:14px;" stroke="currentColor" fill="none"><use href="#icon-message-circle"/></svg>
-            WhatsApp
-          </button>
-          <button class="btn-secondary-action" data-action="mark-no-wa" data-id="${lead.id}" title="Desactivar WhatsApp si es solo linea fija">
-            Sin WhatsApp
-          </button>
-        ` : `
-          <button class="btn-action disabled" title="Canal de WhatsApp no disponible">
-            Solo linea fija
-          </button>
-        `}
+      <div class="kanban-card-meta">
+        <span>${escapeHtml(lead.primary_category || lead.category_slug)}</span>
+        <span>&bull;</span>
+        <span>${escapeHtml(lead.phone_e164 || lead.phone_raw || 'Sin tel')}</span>
+      </div>
 
-        ${hasPhone ? `
-          <button class="btn-action" data-action="call" data-id="${lead.id}" data-phone="${cleanPhone}">
-            <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-phone"/></svg>
-            Llamar
-          </button>
-        ` : ''}
+      ${alertsHtml ? `<div style="display:flex; gap:6px; flex-wrap:wrap;">${alertsHtml}</div>` : ''}
 
-        ${lead.email ? `
-          <a href="mailto:${escapeHtml(lead.email)}" class="btn-icon-only" title="${escapeHtml(lead.email)}">
-            <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-mail"/></svg>
+      <div class="kanban-card-actions">
+        ${lead.whatsapp_url ? `
+          <a href="${escapeHtml(lead.whatsapp_url)}" target="_blank" rel="noopener noreferrer" class="btn-action btn-whatsapp" style="height:26px; padding:0 6px; font-size:11px;" title="Contactar por WhatsApp">
+            <svg style="width:12px;height:12px;" stroke="currentColor" fill="none"><use href="#icon-message-circle"/></svg>
+            WA
           </a>
         ` : ''}
 
-        ${websiteButtonHtml}
-        ${socialButtonsHtml}
+        ${lead.phone_e164 || lead.phone_raw ? `
+          <a href="tel:${escapeHtml(lead.phone_e164 || lead.phone_raw)}" class="btn-action" style="height:26px; padding:0 6px; font-size:11px;" title="Llamar">
+            <svg style="width:12px;height:12px;" stroke="currentColor" fill="none"><use href="#icon-phone"/></svg>
+          </a>
+        ` : ''}
 
-        <button class="btn-action" data-action="schedule" data-id="${lead.id}" style="margin-left: auto;">
-          <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-calendar"/></svg>
-          Agendar
-        </button>
-
-        <button class="btn-icon-only" data-action="audit" data-id="${lead.id}" title="Ver auditoria y argumentos completos">
-          <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-activity"/></svg>
+        <button class="btn-secondary-action btn-open-drawer" style="margin-left: auto; height:26px; font-size:11px;">
+          Ficha
         </button>
       </div>
     `;
 
-    // Bind card action buttons
-    bindCardActions(card, lead);
+    // Click card opens drawer (except when clicking buttons/links)
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('a') || e.target.closest('button.btn-whatsapp')) return;
+      openLeadDrawer(lead);
+    });
 
     return card;
   }
 
-  function bindCardActions(card, lead) {
-    // WhatsApp Click
-    const waBtn = card.querySelector('[data-action="whatsapp"]');
-    if (waBtn) {
-      waBtn.addEventListener('click', async () => {
-        const url = waBtn.dataset.url;
-        // 1. Log interaction in background
-        try {
-          await fetch(`/api/v1/leads/${lead.id}/interact`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              channel: 'WHATSAPP',
-              interaction_type: 'OUTBOUND_MESSAGE',
-              notes: 'Apertura de conversacion via redireccion wa.me'
-            })
-          });
-          // Update local lifecycle stage to FIRST_CONTACT if qualified
-          if (lead.lifecycle_stage === 'QUALIFIED' || lead.lifecycle_stage === 'EXTRACTED' || lead.lifecycle_stage === 'AUDITED') {
-            lead.lifecycle_stage = 'FIRST_CONTACT';
-            const catElem = card.querySelector('.lead-cat');
-            if (catElem) {
-              catElem.textContent = `${lead.primary_category || lead.category_slug} • FIRST_CONTACT`;
+  function renderDenseTable(leads) {
+    if (!denseTableBody) return;
+    denseTableBody.innerHTML = '';
+
+    const q = state.searchQuery.toLowerCase().trim();
+    let filtered = leads;
+    if (q) {
+      filtered = filtered.filter(l => {
+        return (l.name || '').toLowerCase().includes(q) ||
+               (l.address_raw || '').toLowerCase().includes(q) ||
+               (l.phone_raw || '').toLowerCase().includes(q);
+      });
+    }
+
+    if (filtered.length === 0) {
+      denseTableBody.innerHTML = `
+        <tr>
+          <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">
+            No hay prospectos para mostrar.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    filtered.forEach(lead => {
+      const tr = document.createElement('tr');
+      const prob = Math.round(lead.acceptance_probability_pct || 0);
+
+      let stageName = lead.lifecycle_stage;
+      const stObj = state.stages.find(s => s.slug === lead.lifecycle_stage);
+      if (stObj) stageName = `${stObj.step}. ${stObj.name}`;
+
+      let stagText = '--';
+      if (lead.is_stagnant) {
+        stagText = `<span class="stagnant-badge">${lead.stagnant_hours}h</span>`;
+      } else if (lead.postponed_until) {
+        stagText = `<span class="due-badge">Pausado</span>`;
+      }
+
+      tr.innerHTML = `
+        <td><strong>${escapeHtml(lead.name)}</strong></td>
+        <td>${escapeHtml(lead.primary_category || lead.category_slug)}</td>
+        <td><span class="score-badge med">${escapeHtml(stageName)}</span></td>
+        <td><strong>${prob}%</strong></td>
+        <td>${escapeHtml(lead.phone_e164 || lead.phone_raw || 'Sin tel')}</td>
+        <td style="font-family: var(--font-mono); font-size: 11px;">
+          ${lead.last_activity_at ? new Date(lead.last_activity_at).toLocaleDateString('es-MX') : '--'}
+        </td>
+        <td>${stagText}</td>
+        <td>
+          <button class="btn-action btn-table-open" style="height:26px; padding:0 8px; font-size:11px;">
+            Ficha
+          </button>
+        </td>
+      `;
+
+      tr.addEventListener('click', () => openLeadDrawer(lead));
+      denseTableBody.appendChild(tr);
+    });
+  }
+
+  function renderTrashTable(trashLeads) {
+    if (!denseTableBody) return;
+    denseTableBody.innerHTML = '';
+
+    if (trashLeads.length === 0) {
+      denseTableBody.innerHTML = `
+        <tr>
+          <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">
+            La papelera esta vacia.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    trashLeads.forEach(lead => {
+      const tr = document.createElement('tr');
+      const delDate = lead.deleted_at ? new Date(lead.deleted_at).toLocaleString('es-MX') : '--';
+
+      tr.innerHTML = `
+        <td><strong style="text-decoration: line-through; color: var(--text-muted);">${escapeHtml(lead.name)}</strong></td>
+        <td>${escapeHtml(lead.primary_category || lead.category_slug)}</td>
+        <td><span class="score-badge low">${escapeHtml(lead.lifecycle_stage)}</span></td>
+        <td>--</td>
+        <td>${escapeHtml(lead.phone_e164 || lead.phone_raw || 'Sin tel')}</td>
+        <td style="font-family: var(--font-mono); font-size: 11px;">${delDate}</td>
+        <td><span class="due-badge">En Papelera</span></td>
+        <td>
+          <div style="display:flex; gap:6px;">
+            <button class="btn-action btn-restore-lead" data-id="${lead.id}" style="height:26px; font-size:11px;">
+              Restaurar
+            </button>
+            <button class="btn-secondary-action btn-danger btn-purge-lead" data-id="${lead.id}" style="height:26px; font-size:11px;">
+              Purgar
+            </button>
+          </div>
+        </td>
+      `;
+
+      const restoreBtn = tr.querySelector('.btn-restore-lead');
+      if (restoreBtn) {
+        restoreBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          executeRestoreLead(lead.id);
+        });
+      }
+
+      const purgeBtn = tr.querySelector('.btn-purge-lead');
+      if (purgeBtn) {
+        purgeBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          promptDoubleConfirmation(
+            'Purgar Registro Definitivamente',
+            `Se eliminara físicamente el prospecto "${lead.name}" de la base de datos de forma irreversible.`,
+            async () => {
+              await executePurgeLead(lead.id);
             }
+          );
+        });
+      }
+
+      denseTableBody.appendChild(tr);
+    });
+  }
+
+  // ============================================================================
+  // 5. Drawer (Ficha Integral) Management
+  // ============================================================================
+  async function openLeadDrawer(lead) {
+    state.selectedLead = lead;
+
+    if (drawerLeadName) drawerLeadName.textContent = lead.name;
+    if (drawerLeadCategory) drawerLeadCategory.textContent = `${lead.primary_category || lead.category_slug} • Tijuana, BC`;
+    if (drawerCurrentStage) drawerCurrentStage.textContent = lead.lifecycle_stage;
+    if (drawerProbScore) drawerProbScore.textContent = `${Math.round(lead.acceptance_probability_pct || 0)}%`;
+    if (drawerStageSelect) drawerStageSelect.value = lead.lifecycle_stage;
+
+    if (drawerPhone) drawerPhone.textContent = lead.phone_e164 || lead.phone_raw || 'Sin telefono registrado';
+    if (drawerWebsite) {
+      if (lead.website) {
+        drawerWebsite.innerHTML = `<a href="${escapeHtml(lead.website)}" target="_blank" rel="noopener noreferrer" style="color:var(--text-main);">${escapeHtml(lead.website)}</a>`;
+      } else {
+        drawerWebsite.textContent = 'Sin sitio web';
+      }
+    }
+    if (drawerEmail) drawerEmail.textContent = lead.email || 'Sin correo registrado';
+    if (drawerAddress) drawerAddress.textContent = lead.address_raw || 'Tijuana, Baja California';
+    if (drawerReviews) drawerReviews.textContent = lead.rating ? `${lead.rating.toFixed(1)} estrellas (${lead.review_count || 0} reseñas)` : 'Sin reseñas';
+    if (drawerHealthScore) drawerHealthScore.textContent = `${Math.round(lead.technical_health_score || 0)}/100`;
+
+    // Sales Arguments
+    if (drawerSalesArgsList) {
+      const args = Array.isArray(lead.sales_arguments) ? lead.sales_arguments : [];
+      if (args.length > 0) {
+        drawerSalesArgsList.innerHTML = args.map(a => `<li>${escapeHtml(a)}</li>`).join('');
+      } else {
+        drawerSalesArgsList.innerHTML = '<li>Sin argumentos tecnicos calculados.</li>';
+      }
+    }
+
+    // Stagnation and Due Alerts
+    if (drawerStagnationAlert) {
+      drawerStagnationAlert.style.display = lead.is_stagnant ? 'inline-flex' : 'none';
+    }
+    if (drawerPostponedAlert) {
+      drawerPostponedAlert.style.display = lead.postponed_until ? 'inline-flex' : 'none';
+    }
+
+    // Populate Universal Action Buttons
+    populateDrawerActions(lead);
+
+    // Toggle Delete / Restore / Purge buttons
+    const isTrash = state.leadViewMode === 'trash';
+    if (drawerBtnDelete) drawerBtnDelete.style.display = isTrash ? 'none' : 'inline-flex';
+    if (drawerBtnRestore) drawerBtnRestore.style.display = isTrash ? 'inline-flex' : 'none';
+    if (drawerBtnPurge) drawerBtnPurge.style.display = isTrash ? 'inline-flex' : 'none';
+
+    // Load Notes and Timeline
+    await Promise.all([
+      loadLeadNotes(lead.id),
+      loadLeadTimeline(lead.id)
+    ]);
+
+    if (drawerLeadDetail) drawerLeadDetail.style.display = 'flex';
+  }
+
+  function populateDrawerActions(lead) {
+    if (!drawerActionBar) return;
+    drawerActionBar.innerHTML = '';
+
+    const cleanPhone = (lead.phone_e164 || lead.phone_raw || '').replace(/[^0-9]/g, '');
+
+    // WhatsApp Action
+    if (lead.has_whatsapp !== false && cleanPhone.length >= 10) {
+      const template = state.settings.whatsapp_template || 'Hola, buen dia.';
+      const msg = template.replace(/{nombre}/g, lead.name);
+      const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+
+      const btnWa = document.createElement('button');
+      btnWa.className = 'btn-action btn-whatsapp';
+      btnWa.innerHTML = `
+        <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-message-circle"/></svg>
+        WhatsApp
+      `;
+      btnWa.addEventListener('click', async () => {
+        await logInteraction(lead.id, 'WHATSAPP', 'Apertura de chat wa.me');
+        window.open(waUrl, '_blank');
+      });
+      drawerActionBar.appendChild(btnWa);
+
+      const btnNoWa = document.createElement('button');
+      btnNoWa.className = 'btn-secondary-action';
+      btnNoWa.textContent = 'Sin WhatsApp';
+      btnNoWa.title = 'Marcar como linea fija sin soporte de WhatsApp';
+      btnNoWa.addEventListener('click', async () => {
+        await fetch(`/api/v1/leads/${lead.id}/mark-no-whatsapp`, { method: 'POST' });
+        lead.has_whatsapp = false;
+        populateDrawerActions(lead);
+        loadPipelineBoard();
+      });
+      drawerActionBar.appendChild(btnNoWa);
+    } else {
+      const btnFixed = document.createElement('button');
+      btnFixed.className = 'btn-action disabled';
+      btnFixed.textContent = 'Solo linea fija';
+      drawerActionBar.appendChild(btnFixed);
+    }
+
+    // Call Action
+    if (cleanPhone.length >= 10) {
+      const btnCall = document.createElement('button');
+      btnCall.className = 'btn-action';
+      btnCall.innerHTML = `
+        <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-phone"/></svg>
+        Llamar
+      `;
+      btnCall.addEventListener('click', async () => {
+        await logInteraction(lead.id, 'LLAMADA', 'Llamada telefonica iniciada');
+        window.location.href = `tel:+${cleanPhone}`;
+      });
+      drawerActionBar.appendChild(btnCall);
+    }
+
+    // Email Action
+    if (lead.email) {
+      const btnEmail = document.createElement('a');
+      btnEmail.className = 'btn-icon-only';
+      btnEmail.href = `mailto:${escapeHtml(lead.email)}`;
+      btnEmail.title = lead.email;
+      btnEmail.innerHTML = `<svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-mail"/></svg>`;
+      drawerActionBar.appendChild(btnEmail);
+    }
+
+    // Website Action
+    if (lead.website) {
+      const btnWeb = document.createElement('a');
+      btnWeb.className = 'btn-icon-only';
+      btnWeb.href = lead.website;
+      btnWeb.target = '_blank';
+      btnWeb.rel = 'noopener noreferrer';
+      btnWeb.title = 'Abrir sitio web';
+      btnWeb.innerHTML = `<svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-globe"/></svg>`;
+      drawerActionBar.appendChild(btnWeb);
+    }
+  }
+
+  async function logInteraction(leadId, channel, notes) {
+    try {
+      await fetch(`/api/v1/leads/${leadId}/interact`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channel: channel,
+          interaction_type: 'OUTBOUND',
+          notes: notes
+        })
+      });
+      loadLeadTimeline(leadId);
+    } catch (e) {
+      console.error('[Interact] Error:', e);
+    }
+  }
+
+  // Drawer Tabs Switch
+  document.querySelectorAll('.drawer-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.drawer-tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.drawer-tab-panel').forEach(p => p.style.display = 'none');
+
+      btn.classList.add('active');
+      const target = document.getElementById(btn.dataset.tab);
+      if (target) target.style.display = 'block';
+    });
+  });
+
+  if (drawerClose) drawerClose.addEventListener('click', () => drawerLeadDetail.style.display = 'none');
+
+  // Drawer Stage Selector Change
+  if (drawerStageSelect) {
+    drawerStageSelect.addEventListener('change', (e) => {
+      const targetStage = e.target.value;
+      if (state.selectedLead && targetStage !== state.selectedLead.lifecycle_stage) {
+        triggerStageTransition(state.selectedLead.id, targetStage);
+      }
+    });
+  }
+
+  // ============================================================================
+  // 6. Notes & Timeline
+  // ============================================================================
+  async function loadLeadNotes(leadId) {
+    try {
+      const res = await fetch(`/api/v1/leads/${leadId}/notes`);
+      if (res.ok) {
+        const notes = await res.json();
+        if (drawerNotesCount) drawerNotesCount.textContent = notes.length;
+        if (drawerNotesList) {
+          if (notes.length === 0) {
+            drawerNotesList.innerHTML = '<div style="color:var(--text-muted); font-size:11px;">Sin notas registradas.</div>';
+          } else {
+            drawerNotesList.innerHTML = notes.map(n => `
+              <div style="background:var(--bg-app); border:1px solid var(--border); border-radius:var(--radius-sm); padding:8px 10px; font-size:12px;">
+                <div>${escapeHtml(n.content)}</div>
+                <div style="font-size:10px; color:var(--text-muted); font-family:var(--font-mono); margin-top:4px;">
+                  ${n.author || 'Usuario'} &bull; ${new Date(n.created_at).toLocaleString('es-MX')}
+                </div>
+              </div>
+            `).join('');
           }
-        } catch (e) {
-          console.error('[Interact] Error registrando interaccion de WhatsApp:', e);
         }
-        // 2. Open universal WhatsApp link without auto-send
-        window.open(url, '_blank');
-      });
+      }
+    } catch (e) {
+      console.error('[Notes] Error:', e);
     }
+  }
 
-    // Call Click
-    const callBtn = card.querySelector('[data-action="call"]');
-    if (callBtn) {
-      callBtn.addEventListener('click', async () => {
-        const phone = callBtn.dataset.phone;
-        try {
-          await fetch(`/api/v1/leads/${lead.id}/interact`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              channel: 'LLAMADA',
-              interaction_type: 'OUTBOUND_CALL',
-              notes: 'Marcado telefonico tradicional iniciado'
-            })
-          });
-        } catch (e) {
-          console.error('[Interact] Error registrando llamada:', e);
+  if (formDrawerNote) {
+    formDrawerNote.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!state.selectedLead) return;
+      const content = drawerNoteContent.value.trim();
+      if (!content) return;
+
+      try {
+        const res = await fetch(`/api/v1/leads/${state.selectedLead.id}/notes`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content })
+        });
+        if (res.ok) {
+          drawerNoteContent.value = '';
+          loadLeadNotes(state.selectedLead.id);
+          loadLeadTimeline(state.selectedLead.id);
         }
-        window.location.href = `tel:+${phone}`;
-      });
-    }
+      } catch (err) {
+        console.error('[Note] Error al guardar nota:', err);
+      }
+    });
+  }
 
-    // 1-Click "Sin WhatsApp" (Mark no whatsapp)
-    const noWaBtn = card.querySelector('[data-action="mark-no-wa"]');
-    if (noWaBtn) {
-      noWaBtn.addEventListener('click', async () => {
-        try {
-          const res = await fetch(`/api/v1/leads/${lead.id}/mark-no-whatsapp`, { method: 'POST' });
-          if (res.ok) {
-            lead.has_whatsapp = false;
-            // Re-render card
-            const newCard = createLeadCardElement(lead);
-            card.replaceWith(newCard);
+  async function loadLeadTimeline(leadId) {
+    try {
+      const res = await fetch(`/api/v1/leads/${leadId}/timeline`);
+      if (res.ok) {
+        const data = await res.json();
+        if (drawerTimelineFeed) {
+          if (data.timeline.length === 0) {
+            drawerTimelineFeed.innerHTML = '<div style="color:var(--text-muted); font-size:11px;">Sin eventos en el historial.</div>';
+          } else {
+            drawerTimelineFeed.innerHTML = data.timeline.map(item => {
+              const dt = new Date(item.timestamp).toLocaleString('es-MX');
+              if (item.type === 'STAGE_CHANGE') {
+                const durationMinutes = Math.round((item.duration_seconds || 0) / 60);
+                return `
+                  <div class="timeline-item">
+                    <div class="timeline-header">
+                      <span>Fase: ${escapeHtml(item.from_stage || 'INICIAL')} &rarr; ${escapeHtml(item.to_stage)}</span>
+                      <span class="timeline-time">${dt}</span>
+                    </div>
+                    <div style="color:var(--text-secondary);">
+                      Permanencia: ${durationMinutes} min. ${item.notes ? `&bull; ${escapeHtml(item.notes)}` : ''}
+                      ${item.reason ? `<br><strong>Motivo:</strong> ${escapeHtml(item.reason)}` : ''}
+                    </div>
+                  </div>
+                `;
+              } else if (item.type === 'NOTE') {
+                return `
+                  <div class="timeline-item">
+                    <div class="timeline-header">
+                      <span>Nota de ${escapeHtml(item.author || 'Usuario')}</span>
+                      <span class="timeline-time">${dt}</span>
+                    </div>
+                    <div style="color:var(--text-main);">${escapeHtml(item.content)}</div>
+                  </div>
+                `;
+              } else {
+                return `
+                  <div class="timeline-item">
+                    <div class="timeline-header">
+                      <span>[${escapeHtml(item.channel)}] ${escapeHtml(item.action)}</span>
+                      <span class="timeline-time">${dt}</span>
+                    </div>
+                  </div>
+                `;
+              }
+            }).join('');
           }
-        } catch (e) {
-          console.error('[MarkNoWa] Error al actualizar estado de WhatsApp:', e);
         }
-      });
-    }
-
-    // Agendar Cita
-    const schedBtn = card.querySelector('[data-action="schedule"]');
-    if (schedBtn) {
-      schedBtn.addEventListener('click', () => {
-        openNewEventModal(lead.id);
-      });
-    }
-
-    // Auditoria Tecnica Modal
-    const auditBtn = card.querySelector('[data-action="audit"]');
-    if (auditBtn) {
-      auditBtn.addEventListener('click', () => {
-        openAuditModal(lead);
-      });
+      }
+    } catch (e) {
+      console.error('[Timeline] Error:', e);
     }
   }
 
   // ============================================================================
-  // 5. Calendar Management & Rendering
+  // 7. Stage Transitions & Mandatory Modals
+  // ============================================================================
+  function triggerStageTransition(leadId, targetStage) {
+    state.pendingStageTransition = { leadId, targetStage };
+
+    if (targetStage === 'POSTPONED') {
+      openStageActionModal(
+        'Postergacion de Prospecto (Obligatorio)',
+        'postponed'
+      );
+    } else if (targetStage === 'REGRETTED') {
+      openStageActionModal(
+        'Motivo de Retractacion (Obligatorio)',
+        'regretted'
+      );
+    } else if (targetStage === 'CLOSED_LOST') {
+      openStageActionModal(
+        'Motivo de Descarte (Obligatorio)',
+        'lost'
+      );
+    } else {
+      // Execute transition directly
+      executeStageTransition({
+        stage: targetStage,
+        notes: 'Transicion manual en tablero'
+      });
+    }
+  }
+
+  function openStageActionModal(title, mode) {
+    if (stageActionTitle) stageActionTitle.textContent = title;
+    if (stageActionPostponedFields) stageActionPostponedFields.style.display = mode === 'postponed' ? 'block' : 'none';
+    if (stageActionRegrettedFields) stageActionRegrettedFields.style.display = mode === 'regretted' ? 'block' : 'none';
+    if (stageActionLostFields) stageActionLostFields.style.display = mode === 'lost' ? 'block' : 'none';
+
+    // Set default postponement time (Tomorrow 10am)
+    if (mode === 'postponed' && stagePostponedDate) {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(10, 0, 0, 0);
+      stagePostponedDate.value = formatDateTimeLocal(tomorrow);
+    }
+
+    if (modalStageAction) modalStageAction.style.display = 'flex';
+  }
+
+  if (formStageAction) {
+    formStageAction.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!state.pendingStageTransition) return;
+
+      const { targetStage } = state.pendingStageTransition;
+      const payload = { stage: targetStage };
+
+      if (targetStage === 'POSTPONED') {
+        const d = stagePostponedDate.value;
+        const n = stagePostponedNote.value.trim();
+        if (!d || !n) {
+          alert('Fecha y nota son obligatorias para postergar.');
+          return;
+        }
+        payload.reactivation_date = new Date(d).toISOString();
+        payload.notes = n;
+      } else if (targetStage === 'REGRETTED') {
+        const r = stageRegretReason.value;
+        if (!r) {
+          alert('Selecciona el motivo de retractacion.');
+          return;
+        }
+        payload.regret_reason = r;
+        payload.regret_details = stageRegretDetails.value.trim() || null;
+        payload.regret_amount = stageRegretAmount.value ? parseFloat(stageRegretAmount.value) : null;
+        payload.regret_service = stageRegretService.value.trim() || null;
+        payload.notes = stageGenericNote.value.trim() || null;
+      } else if (targetStage === 'CLOSED_LOST') {
+        const l = stageLossReason.value;
+        if (!l) {
+          alert('Selecciona el motivo de descarte.');
+          return;
+        }
+        payload.loss_reason = l;
+        payload.notes = stageGenericNote.value.trim() || null;
+      } else {
+        payload.notes = stageGenericNote.value.trim() || null;
+      }
+
+      await executeStageTransition(payload);
+      if (modalStageAction) modalStageAction.style.display = 'none';
+      formStageAction.reset();
+    });
+  }
+
+  async function executeStageTransition(payload) {
+    if (!state.pendingStageTransition) return;
+    const { leadId } = state.pendingStageTransition;
+
+    try {
+      const res = await fetch(`/api/v1/leads/${leadId}/stage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        await loadPipelineBoard();
+        // If drawer open, refresh it
+        if (state.selectedLead && state.selectedLead.id === leadId) {
+          state.selectedLead.lifecycle_stage = payload.stage;
+          if (drawerCurrentStage) drawerCurrentStage.textContent = payload.stage;
+          if (drawerStageSelect) drawerStageSelect.value = payload.stage;
+          loadLeadTimeline(leadId);
+        }
+      } else {
+        const err = await res.json();
+        alert(`Error al cambiar de fase: ${err.detail || 'Operacion no permitida'}`);
+      }
+    } catch (e) {
+      console.error('[Transition] Error:', e);
+    }
+  }
+
+  if (modalStageActionClose) modalStageActionClose.addEventListener('click', () => modalStageAction.style.display = 'none');
+  if (modalStageActionCancel) modalStageActionCancel.addEventListener('click', () => modalStageAction.style.display = 'none');
+
+  // ============================================================================
+  // 8. Double Confirmation Dialog for Destructive Actions
+  // ============================================================================
+  function promptDoubleConfirmation(title, warningMessage, onConfirmCallback) {
+    state.pendingDestructiveAction = onConfirmCallback;
+
+    if (confirmModalTitle) confirmModalTitle.textContent = title;
+    if (confirmWarningText) confirmWarningText.textContent = warningMessage;
+
+    if (confirmStep1) confirmStep1.style.display = 'block';
+    if (confirmStep2) confirmStep2.style.display = 'none';
+    if (modalDoubleConfirm) modalDoubleConfirm.style.display = 'flex';
+  }
+
+  if (confirmBtnNext) {
+    confirmBtnNext.addEventListener('click', () => {
+      if (confirmStep1) confirmStep1.style.display = 'none';
+      if (confirmStep2) confirmStep2.style.display = 'block';
+    });
+  }
+
+  if (confirmBtnCancel1) confirmBtnCancel1.addEventListener('click', () => modalDoubleConfirm.style.display = 'none');
+  if (confirmBtnCancel2) confirmBtnCancel2.addEventListener('click', () => modalDoubleConfirm.style.display = 'none');
+  if (confirmModalClose) confirmModalClose.addEventListener('click', () => modalDoubleConfirm.style.display = 'none');
+
+  if (confirmBtnExecute) {
+    confirmBtnExecute.addEventListener('click', async () => {
+      if (state.pendingDestructiveAction) {
+        await state.pendingDestructiveAction();
+      }
+      if (modalDoubleConfirm) modalDoubleConfirm.style.display = 'none';
+    });
+  }
+
+  // Destructive Actions Handlers
+  if (drawerBtnDelete) {
+    drawerBtnDelete.addEventListener('click', () => {
+      if (!state.selectedLead) return;
+      promptDoubleConfirmation(
+        'Enviar Prospecto a Papelera',
+        `El prospecto "${state.selectedLead.name}" sera movido a la papelera (Soft Delete) y sus datos quedaran blindados para evitar que futuras extracciones lo vuelvan a importar como nuevo.`,
+        async () => {
+          await executeSoftDeleteLead(state.selectedLead.id);
+          drawerLeadDetail.style.display = 'none';
+        }
+      );
+    });
+  }
+
+  if (drawerBtnRestore) {
+    drawerBtnRestore.addEventListener('click', () => {
+      if (!state.selectedLead) return;
+      executeRestoreLead(state.selectedLead.id);
+      drawerLeadDetail.style.display = 'none';
+    });
+  }
+
+  if (drawerBtnPurge) {
+    drawerBtnPurge.addEventListener('click', () => {
+      if (!state.selectedLead) return;
+      promptDoubleConfirmation(
+        'Purgar Registro Definitivamente',
+        `Esta accion borrara fisicamente a "${state.selectedLead.name}" de la base de datos de forma permanente e irreversible.`,
+        async () => {
+          await executePurgeLead(state.selectedLead.id);
+          drawerLeadDetail.style.display = 'none';
+        }
+      );
+    });
+  }
+
+  if (drawerBtnResetHistory) {
+    drawerBtnResetHistory.addEventListener('click', () => {
+      if (!state.selectedLead) return;
+      promptDoubleConfirmation(
+        'Reiniciar Historial de Actividad',
+        `Se borrara todo el registro de llamadas, mensajes de WhatsApp, notas y cambios de fase del prospecto "${state.selectedLead.name}". Su estado se restablecera a "Calificado".`,
+        async () => {
+          await executeResetHistory(state.selectedLead.id);
+        }
+      );
+    });
+  }
+
+  async function executeSoftDeleteLead(leadId) {
+    try {
+      const res = await fetch(`/api/v1/leads/${leadId}`, { method: 'DELETE' });
+      if (res.ok) {
+        await Promise.all([loadPipelineBoard(), loadTrashCount()]);
+      }
+    } catch (e) {
+      console.error('[SoftDelete] Error:', e);
+    }
+  }
+
+  async function executeRestoreLead(leadId) {
+    try {
+      const res = await fetch(`/api/v1/leads/${leadId}/restore`, { method: 'POST' });
+      if (res.ok) {
+        await Promise.all([loadPipelineBoard(), loadTrashCount()]);
+      }
+    } catch (e) {
+      console.error('[Restore] Error:', e);
+    }
+  }
+
+  async function executePurgeLead(leadId) {
+    try {
+      const res = await fetch(`/api/v1/leads/${leadId}/purge`, { method: 'DELETE' });
+      if (res.ok) {
+        await Promise.all([loadPipelineBoard(), loadTrashCount()]);
+      }
+    } catch (e) {
+      console.error('[Purge] Error:', e);
+    }
+  }
+
+  async function executeResetHistory(leadId) {
+    try {
+      const res = await fetch(`/api/v1/leads/${leadId}/reset-history`, { method: 'POST' });
+      if (res.ok) {
+        await loadPipelineBoard();
+        loadLeadTimeline(leadId);
+        loadLeadNotes(leadId);
+      }
+    } catch (e) {
+      console.error('[ResetHistory] Error:', e);
+    }
+  }
+
+  // ============================================================================
+  // 9. Manual Lead Creation & Real-Time Duplicate Prevention
+  // ============================================================================
+  if (topBtnNewLead) {
+    topBtnNewLead.addEventListener('click', () => {
+      if (formNewLead) formNewLead.reset();
+      if (leadDupAlert) leadDupAlert.style.display = 'none';
+      if (modalNewLead) modalNewLead.style.display = 'flex';
+    });
+  }
+
+  if (modalNewLeadClose) modalNewLeadClose.addEventListener('click', () => modalNewLead.style.display = 'none');
+  if (modalNewLeadCancel) modalNewLeadCancel.addEventListener('click', () => modalNewLead.style.display = 'none');
+
+  // Real-time duplicate check debounced
+  let dupDebounceTimer = null;
+  function triggerDupCheck() {
+    clearTimeout(dupDebounceTimer);
+    dupDebounceTimer = setTimeout(async () => {
+      const name = newLeadName.value.trim();
+      const phone = newLeadPhone.value.trim();
+      const website = newLeadWebsite.value.trim();
+
+      if (!name && !phone && !website) {
+        if (leadDupAlert) leadDupAlert.style.display = 'none';
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/v1/leads/validate-duplicate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: name || null,
+            phone_e164: phone || null,
+            normalized_domain: website || null
+          })
+        });
+        if (res.ok) {
+          const check = await res.json();
+          if (check.is_duplicate && leadDupAlert) {
+            const ex = check.existing_lead;
+            leadDupMsg.innerHTML = `
+              Coincidencia encontrada por <strong>${escapeHtml(check.conflict_field)}</strong>: "${escapeHtml(ex.name)}" (Fase: ${ex.lifecycle_stage}${ex.is_deleted ? ', En Papelera' : ''}).
+            `;
+            leadDupAlert.style.display = 'block';
+          } else if (leadDupAlert) {
+            leadDupAlert.style.display = 'none';
+          }
+        }
+      } catch (err) {
+        console.error('[DupCheck] Error:', err);
+      }
+    }, 400);
+  }
+
+  [newLeadName, newLeadPhone, newLeadWebsite].forEach(input => {
+    if (input) input.addEventListener('input', triggerDupCheck);
+  });
+
+  if (formNewLead) {
+    formNewLead.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = newLeadName.value.trim();
+      if (!name) return;
+
+      const payload = {
+        name,
+        category_slug: newLeadCat.value,
+        phone_raw: newLeadPhone.value.trim() || null,
+        website: newLeadWebsite.value.trim() || null,
+        email: newLeadEmail.value.trim() || null,
+        address_raw: newLeadAddress.value.trim() || null,
+        notes: newLeadNotes.value.trim() || null
+      };
+
+      try {
+        const res = await fetch('/api/v1/leads', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+          modalNewLead.style.display = 'none';
+          formNewLead.reset();
+          loadPipelineBoard();
+        } else {
+          const err = await res.json();
+          const detail = err.detail;
+          if (detail && detail.conflict) {
+            alert(`No se puede guardar: ${detail.message}`);
+          } else {
+            alert(`Error: ${detail || 'No se pudo registrar prospecto'}`);
+          }
+        }
+      } catch (err) {
+        console.error('[CreateLead] Error:', err);
+      }
+    });
+  }
+
+  // ============================================================================
+  // 10. View Mode & Navigation Handlers
+  // ============================================================================
+  function switchView(viewName) {
+    state.currentView = viewName;
+    if (viewLeads) viewLeads.style.display = viewName === 'leads' ? 'block' : 'none';
+    if (viewCalendar) viewCalendar.style.display = viewName === 'calendar' ? 'flex' : 'none';
+    if (viewSettings) viewSettings.style.display = viewName === 'settings' ? 'block' : 'none';
+
+    [navBtnLeads, navBtnCalendar, navBtnSettings].forEach(btn => {
+      if (btn) btn.classList.toggle('active', btn.dataset.view === viewName);
+    });
+    [mobNavLeads, mobNavCalendar, mobNavSettings].forEach(btn => {
+      if (btn) btn.classList.toggle('active', btn.dataset.view === viewName);
+    });
+
+    if (pageTitle) {
+      if (viewName === 'leads') pageTitle.textContent = 'Pipeline Comercial (12 Fases)';
+      else if (viewName === 'calendar') pageTitle.textContent = 'Agenda de Citas y Seguimientos';
+      else if (viewName === 'settings') pageTitle.textContent = 'Configuracion de Canales y Red';
+    }
+
+    if (viewName === 'calendar') {
+      loadCalendarEvents();
+      loadAlerts();
+    }
+  }
+
+  [navBtnLeads, mobNavLeads].forEach(el => el && el.addEventListener('click', () => switchView('leads')));
+  [navBtnCalendar, mobNavCalendar].forEach(el => el && el.addEventListener('click', () => switchView('calendar')));
+  [navBtnSettings, mobNavSettings].forEach(el => el && el.addEventListener('click', () => switchView('settings')));
+
+  // Toggle Kanban vs Table
+  if (btnToggleKanban) {
+    btnToggleKanban.addEventListener('click', () => {
+      state.leadViewMode = 'kanban';
+      btnToggleKanban.classList.add('active');
+      if (btnToggleTable) btnToggleTable.classList.remove('active');
+      if (btnToggleTrash) btnToggleTrash.classList.remove('active');
+      renderCurrentViewMode();
+    });
+  }
+
+  if (btnToggleTable) {
+    btnToggleTable.addEventListener('click', () => {
+      state.leadViewMode = 'table';
+      btnToggleTable.classList.add('active');
+      if (btnToggleKanban) btnToggleKanban.classList.remove('active');
+      if (btnToggleTrash) btnToggleTrash.classList.remove('active');
+      renderCurrentViewMode();
+    });
+  }
+
+  if (btnToggleTrash) {
+    btnToggleTrash.addEventListener('click', async () => {
+      state.leadViewMode = 'trash';
+      btnToggleTrash.classList.add('active');
+      if (btnToggleKanban) btnToggleKanban.classList.remove('active');
+      if (btnToggleTable) btnToggleTable.classList.remove('active');
+      await loadTrashCount();
+      renderCurrentViewMode();
+    });
+  }
+
+  // Search input
+  if (leadsSearchInput) {
+    leadsSearchInput.addEventListener('input', (e) => {
+      state.searchQuery = e.target.value;
+      renderCurrentViewMode();
+    });
+  }
+
+  // Category filter
+  if (categoryFilters) {
+    categoryFilters.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        categoryFilters.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.activeCategory = btn.dataset.category;
+        loadPipelineBoard();
+      });
+    });
+  }
+
+  if (topBtnRefresh) {
+    topBtnRefresh.addEventListener('click', () => {
+      loadInitialData();
+    });
+  }
+
+  // ============================================================================
+  // 11. Calendar & Settings Utilities
   // ============================================================================
   function renderCalendarEvents(events) {
     if (!calendarEventsList) return;
@@ -586,7 +1444,6 @@ document.addEventListener('DOMContentLoaded', () => {
       if (calendarEmptyState) calendarEmptyState.style.display = 'block';
       return;
     }
-
     if (calendarEmptyState) calendarEmptyState.style.display = 'none';
 
     events.forEach(evt => {
@@ -610,7 +1467,7 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
 
         <div class="event-actions">
-          ${evt.status === 'PENDIENTE' ? `
+          ${(evt.status === 'Pendiente' || evt.status === 'PENDIENTE') ? `
             <button class="btn-action" data-evt-action="complete" data-id="${evt.id}" style="font-size: 11px;">
               <svg style="width:12px;height:12px;" stroke="currentColor" fill="none"><use href="#icon-check"/></svg>
               Completar
@@ -624,38 +1481,32 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
       `;
 
-      // Event Card Action Handlers
       const completeBtn = item.querySelector('[data-evt-action="complete"]');
       if (completeBtn) {
         completeBtn.addEventListener('click', async () => {
-          await updateEventStatus(evt.id, 'COMPLETADO');
+          await fetch(`/api/v1/calendar/events/${evt.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'COMPLETADO' })
+          });
+          loadCalendarEvents();
         });
       }
 
       const cancelBtn = item.querySelector('[data-evt-action="cancel"]');
       if (cancelBtn) {
         cancelBtn.addEventListener('click', async () => {
-          await updateEventStatus(evt.id, 'CANCELADO');
+          await fetch(`/api/v1/calendar/events/${evt.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'CANCELADO' })
+          });
+          loadCalendarEvents();
         });
       }
 
       calendarEventsList.appendChild(item);
     });
-  }
-
-  async function updateEventStatus(eventId, status) {
-    try {
-      const res = await fetch(`/api/v1/calendar/events/${eventId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status })
-      });
-      if (res.ok) {
-        loadCalendarEvents();
-      }
-    } catch (e) {
-      console.error('[Calendar] Error actualizando estado de evento:', e);
-    }
   }
 
   function populateLeadSelect(leads) {
@@ -669,51 +1520,44 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function openNewEventModal(preselectedLeadId = null) {
-    if (!modalEvent) return;
-    if (preselectedLeadId && eventLeadIdSelect) {
-      eventLeadIdSelect.value = preselectedLeadId;
-    }
+  if (topBtnNewEvent) {
+    topBtnNewEvent.addEventListener('click', () => {
+      const now = new Date();
+      now.setHours(now.getHours() + 2, 0, 0, 0);
+      const end = new Date(now);
+      end.setHours(end.getHours() + 1);
 
-    // Set default times (Tomorrow 10:00 AM)
-    const now = new Date();
-    now.setHours(now.getHours() + 2);
-    now.setMinutes(0, 0, 0);
-
-    const end = new Date(now);
-    end.setHours(end.getHours() + 1);
-
-    if (eventStartTimeInput) eventStartTimeInput.value = formatDateTimeLocal(now);
-    if (eventEndTimeInput) eventEndTimeInput.value = formatDateTimeLocal(end);
-
-    modalEvent.style.display = 'flex';
+      if (eventStartTimeInput) eventStartTimeInput.value = formatDateTimeLocal(now);
+      if (eventEndTimeInput) eventEndTimeInput.value = formatDateTimeLocal(end);
+      if (modalEvent) modalEvent.style.display = 'flex';
+    });
   }
 
-  // Handle Event Form Submit
+  if (btnCalendarAddEvent) {
+    btnCalendarAddEvent.addEventListener('click', () => {
+      if (topBtnNewEvent) topBtnNewEvent.click();
+    });
+  }
+
+  if (modalEventClose) modalEventClose.addEventListener('click', () => modalEvent.style.display = 'none');
+  if (modalEventCancel) modalEventCancel.addEventListener('click', () => modalEvent.style.display = 'none');
+
   if (formNewEvent) {
     formNewEvent.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const leadId = eventLeadIdSelect.value;
-      const title = document.getElementById('event-title').value;
-      const eventType = document.getElementById('event-type').value;
-      const startTime = eventStartTimeInput.value;
-      const endTime = eventEndTimeInput.value;
-      const notes = document.getElementById('event-notes').value;
-
       try {
         const res = await fetch('/api/v1/calendar/events', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            lead_id: leadId,
-            title: title,
-            event_type: eventType,
-            start_time: new Date(startTime).toISOString(),
-            end_time: new Date(endTime).toISOString(),
-            notes: notes
+            lead_id: eventLeadIdSelect.value,
+            title: document.getElementById('event-title').value.trim(),
+            event_type: document.getElementById('event-type').value,
+            start_time: new Date(eventStartTimeInput.value).toISOString(),
+            end_time: new Date(eventEndTimeInput.value).toISOString(),
+            notes: document.getElementById('event-notes').value.trim() || null
           })
         });
-
         if (res.ok) {
           modalEvent.style.display = 'none';
           formNewEvent.reset();
@@ -726,81 +1570,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  if (modalEventClose) modalEventClose.addEventListener('click', () => modalEvent.style.display = 'none');
-  if (modalEventCancel) modalEventCancel.addEventListener('click', () => modalEvent.style.display = 'none');
-  if (topBtnNewEvent) topBtnNewEvent.addEventListener('click', () => openNewEventModal());
-  if (btnCalendarAddEvent) btnCalendarAddEvent.addEventListener('click', () => openNewEventModal());
-
-  // ============================================================================
-  // 6. Technical Audit Modal
-  // ============================================================================
-  async function openAuditModal(lead) {
-    if (!modalAudit) return;
-    state.selectedLeadForAudit = lead;
-
-    if (modalAuditLeadName) modalAuditLeadName.textContent = lead.name;
-    if (modalHealthScore) modalHealthScore.textContent = `${lead.technical_health_score != null ? Math.round(lead.technical_health_score) : 0}/100`;
-    if (modalProbScore) modalProbScore.textContent = `${lead.acceptance_probability_pct != null ? Math.round(lead.acceptance_probability_pct) : 0}%`;
-
-    // Channels
-    if (modalChannelsList) {
-      modalChannelsList.innerHTML = '';
-      const st = lead.channels_status || {};
-      for (const [ch, status] of Object.entries(st)) {
-        const badge = document.createElement('span');
-        badge.className = `score-badge ${status === 'DISPONIBLE' ? 'high' : 'low'}`;
-        badge.textContent = `${ch.toUpperCase()}: ${status}`;
-        modalChannelsList.appendChild(badge);
-      }
-    }
-
-    // Arguments
-    if (modalSalesArguments) {
-      const args = Array.isArray(lead.sales_arguments) ? lead.sales_arguments : [];
-      if (args.length > 0) {
-        modalSalesArguments.innerHTML = `
-          <ul>
-            ${args.map(a => `<li>${escapeHtml(a)}</li>`).join('')}
-          </ul>
-        `;
-      } else {
-        modalSalesArguments.innerHTML = '<span style="color:var(--text-muted);">Sin argumentos calculados.</span>';
-      }
-    }
-
-    // Activity log
-    if (modalActivityLog) {
-      modalActivityLog.textContent = 'Consultando interacciones...';
-      try {
-        const res = await fetch(`/api/v1/leads/${lead.id}/activity`);
-        if (res.ok) {
-          const acts = await res.json();
-          if (acts.length > 0) {
-            modalActivityLog.innerHTML = acts.map(a => {
-              const dt = new Date(a.created_at).toLocaleString('es-MX');
-              return `<div style="margin-bottom: 4px;"><strong>${dt}:</strong> [${escapeHtml(a.channel)}] ${escapeHtml(a.notes || a.interaction_type)}</div>`;
-            }).join('');
-          } else {
-            modalActivityLog.textContent = 'Sin historial de interacciones registrado para este contacto.';
-          }
-        }
-      } catch (e) {
-        modalActivityLog.textContent = 'No se pudo consultar el registro de actividad.';
-      }
-    }
-
-    modalAudit.style.display = 'flex';
-  }
-
-  if (modalAuditClose) modalAuditClose.addEventListener('click', () => modalAudit.style.display = 'none');
-  if (modalAuditDone) modalAuditDone.addEventListener('click', () => modalAudit.style.display = 'none');
-
-  // ============================================================================
-  // 7. Settings Handlers
-  // ============================================================================
+  // Settings Save
   if (btnSaveWhatsappTemplate) {
     btnSaveWhatsappTemplate.addEventListener('click', async () => {
-      const text = settingsWhatsappTemplate.value;
+      const text = settingsWhatsappTemplate.value.trim();
       try {
         btnSaveWhatsappTemplate.textContent = 'Guardando...';
         const res = await fetch('/api/v1/settings', {
@@ -811,13 +1584,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (res.ok) {
           state.settings.whatsapp_template = text;
           btnSaveWhatsappTemplate.textContent = 'Guardado';
-          setTimeout(() => {
-            btnSaveWhatsappTemplate.textContent = 'Guardar Plantilla';
-          }, 1500);
-          // Refresh leads cards so new template applies to URLs
-          renderLeads(state.filteredLeads);
+          setTimeout(() => btnSaveWhatsappTemplate.textContent = 'Guardar Plantilla', 1500);
+          loadPipelineBoard();
         }
-      } catch (err) {
+      } catch (e) {
         btnSaveWhatsappTemplate.textContent = 'Error al guardar';
       }
     });
@@ -839,8 +1609,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (btnRequestNotifications) {
     btnRequestNotifications.addEventListener('click', async () => {
       if ('Notification' in window) {
-        const perm = await Notification.requestPermission();
-        if (perm === 'granted') {
+        const p = await Notification.requestPermission();
+        if (p === 'granted') {
           btnRequestNotifications.textContent = 'Alertas Habilitadas';
           btnRequestNotifications.classList.add('disabled');
         }
@@ -849,43 +1619,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ============================================================================
-  // 8. Filters & Search Handlers
-  // ============================================================================
-  if (leadsSearchInput) {
-    leadsSearchInput.addEventListener('input', (e) => {
-      state.searchQuery = e.target.value;
-      applyFilters();
-    });
-  }
-
-  if (categoryFilters) {
-    categoryFilters.querySelectorAll('.filter-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        categoryFilters.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        state.activeCategory = btn.dataset.category;
-        applyFilters();
-      });
-    });
-  }
-
-  if (stageFilterSelect) {
-    stageFilterSelect.addEventListener('change', (e) => {
-      state.activeStage = e.target.value;
-      applyFilters();
-    });
-  }
-
-  if (topBtnRefresh) {
-    topBtnRefresh.addEventListener('click', () => {
-      loadLeads();
-      loadCalendarEvents();
-      loadAlerts();
-    });
-  }
-
-  // ============================================================================
-  // 9. Utilities
+  // 12. Helpers
   // ============================================================================
   function escapeHtml(str) {
     if (!str) return '';
@@ -913,12 +1647,7 @@ document.addEventListener('DOMContentLoaded', () => {
     return `${y}-${m}-${d}T${h}:${min}`;
   }
 
-  // ============================================================================
-  // 10. Initialization
-  // ============================================================================
+  // Start initial loads
   initLiveReload();
-  loadSettings();
-  loadLeads();
-  loadCalendarEvents();
-  loadAlerts();
+  loadInitialData();
 });

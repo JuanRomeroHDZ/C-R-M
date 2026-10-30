@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query
 from src.db.connection import execute_query
 from src.models.schemas import LeadOut
+from src.pipeline.state_machine import get_stagnation_info
 
 router = APIRouter(prefix="/api/v1/leads", tags=["Leads"])
 
@@ -53,7 +54,20 @@ def _hydrate_lead(row: dict) -> LeadOut:
         created_at=row["created_at"],
         updated_at=row["updated_at"],
         last_seen_at=row["last_seen_at"],
-        is_deleted=row["is_deleted"]
+        is_deleted=row["is_deleted"],
+        deleted_at=row.get("deleted_at"),
+        deleted_reason=row.get("deleted_reason"),
+        stage_entered_at=row.get("stage_entered_at"),
+        last_activity_at=row.get("last_activity_at"),
+        postponed_until=row.get("postponed_until"),
+        postponed_note=row.get("postponed_note"),
+        regret_reason=row.get("regret_reason"),
+        regret_details=row.get("regret_details"),
+        regret_amount=float(row["regret_amount"]) if row.get("regret_amount") is not None else None,
+        regret_service=row.get("regret_service"),
+        loss_reason=row.get("loss_reason"),
+        is_stagnant=get_stagnation_info(row)["is_stagnant"],
+        stagnant_hours=get_stagnation_info(row)["stagnant_hours"]
     )
 
 

@@ -82,6 +82,7 @@ services:
       - "${HOST_BIND_IP:-127.0.0.1}:${HOST_PORT_FRONTEND}:80"
     volumes:
       - ./frontend/src:/usr/share/nginx/html
+      - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - crm_network
 
@@ -93,6 +94,8 @@ services:
     restart: unless-stopped
     ports:
       - "${PROXY_BIND_IP:-0.0.0.0}:${HOST_PORT_PROXY}:80"
+    volumes:
+      - ./proxy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - crm_network
     depends_on:

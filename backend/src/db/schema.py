@@ -231,6 +231,54 @@ CREATE TABLE IF NOT EXISTS system_settings (
     updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
 
+-- Phase 5 Migrations: Pipeline 12 Stages, History, Stagnation, Notes, Blacklist
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS stage_entered_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS last_activity_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS postponed_until TIMESTAMPTZ;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS postponed_note TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS regret_reason VARCHAR(100);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS regret_details TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS regret_amount NUMERIC(12, 2);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS regret_service VARCHAR(255);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS loss_reason VARCHAR(100);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS deleted_reason VARCHAR(255);
+
+CREATE TABLE IF NOT EXISTS lead_stage_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    lead_id UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+    from_stage VARCHAR(50),
+    to_stage VARCHAR(50) NOT NULL,
+    duration_seconds INTEGER DEFAULT 0,
+    changed_by VARCHAR(50) DEFAULT 'user',
+    notes TEXT,
+    reason VARCHAR(255),
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS lead_notes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    lead_id UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    author VARCHAR(100) DEFAULT 'Usuario',
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS blacklist_identifiers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    phone_e164 VARCHAR(50),
+    normalized_domain VARCHAR(255),
+    external_id VARCHAR(255),
+    reason VARCHAR(255),
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_stage_history_lead ON lead_stage_history(lead_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_lead_notes_lead ON lead_notes(lead_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_blacklist_phone ON blacklist_identifiers(phone_e164);
+CREATE INDEX IF NOT EXISTS idx_blacklist_domain ON blacklist_identifiers(normalized_domain);
+CREATE INDEX IF NOT EXISTS idx_blacklist_ext_id ON blacklist_identifiers(external_id);
+
 CREATE INDEX IF NOT EXISTS idx_leads_phone_e164 ON leads(phone_e164);
 CREATE INDEX IF NOT EXISTS idx_leads_domain ON leads(normalized_domain);
 CREATE INDEX IF NOT EXISTS idx_leads_acceptance_score ON leads(acceptance_probability_pct);
