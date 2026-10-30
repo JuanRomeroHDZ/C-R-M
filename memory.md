@@ -25,12 +25,20 @@ Documento de referencia para navegacion e indexacion por agentes de inteligencia
 - `backend/src/geo/quadtree.py`: Algoritmo de subdivision adaptativa de cuadriculas espaciales en cuatro sub-cuadrantes al detectar saturacion comercial en celdas.
 - `backend/src/extractors/osm_engine.py`: Sub-motor de extraccion para OpenStreetMap con generador Overpass QL, rotacion de servidores espejo y analisis de etiquetas comerciales.
 - `backend/src/extractors/gmaps_engine.py`: Sub-motor de extraccion profunda para Google Maps con Playwright headless, intercepcion de recursos pesados y cortacircuitos de seguridad.
+- `backend/src/analysis/deduplication.py`: Motor determinista y difuso que normaliza telefonos a E.164, reclasifica redes sociales en sitios web y fusiona registros duplicados respetando borrado logico.
+- `backend/src/analysis/web_auditor.py`: Analizador tecnico asincrono con proteccion anti-SSRF que diagnostica resolucion DNS, certificados SSL, cabeceras de seguridad, viewport movil, SEO y pixeles de conversion.
+- `backend/src/analysis/scoring.py`: Algoritmo que calcula el puntaje de salud tecnica web y la probabilidad porcentual de aceptacion de propuestas comerciales generando argumentos estructurados de venta.
+- `backend/src/analysis/config_scoring.py`: Parametros desacoplados con ponderaciones y umbrales numericos para traccion comercial, deficiencias tecnicas, factores de resistencia y calificacion en el pipeline.
+- `backend/src/analysis/pipeline.py`: Orquestador del flujo comercial que audita prospectos, evalua viabilidad y gestiona la transicion automatica entre estados Extraido, Auditado y Calificado.
 - `backend/src/queue/redis_queue.py`: Gestor de colas en Redis que controla la maquina de estados de trabajos, encolamiento de celdas y pausas en caliente.
 - `backend/src/queue/worker.py`: Trabajador en segundo plano que procesa celdas geograficas, ejecuta extraccion hibrida, particion adaptativa y persistencia con manejo de conflictos.
 - `backend/src/api/categories.py`: Endpoints REST para operaciones CRUD sobre categorias comerciales, bancos de sinonimos y mapeos de etiquetas OpenStreetMap.
 - `backend/src/api/jobs.py`: Endpoints para crear barridos geograficos, pausar, reanudar o cancelar trabajos de extraccion y consultar telemetria en tiempo real.
 - `backend/src/api/leads.py`: Endpoints para consultar y filtrar prospectos capturados con soporte de paginacion, filtros por categoria y exclusion de borrado logico.
+- `backend/src/api/audit.py`: Endpoints REST para ejecutar auditorias tecnicas individuales o por lotes sobre prospectos y consultar diagnosticos detallados de infraestructura web.
+- `backend/src/api/deduplication.py`: Endpoints para detonar la normalizacion y consolidacion multicapa de contactos y consultar el historial cronologico de registros fusionados.
 - `backend/src/verify_extraction.py`: Rutina de verificacion ejecutable para comprobar la extraccion real de prospectos en Zona Rio sin emplear datos simulados.
+- `backend/src/verify_phase3.py`: Script de verificacion integral para comprobar deduplicacion real, auditoria tecnica web en vivo, calculo predictivo de cierre y transicion en pipeline.
 - `frontend/`: Directorio del servicio web cliente con interfaz responsiva, ligera y estetica minimalista en escala de grises.
 - `frontend/Dockerfile`: Imagen ligera Nginx Alpine encargada de servir los archivos estaticos del frontend con comprobacion de salud integrada.
 - `frontend/nginx.conf`: Configuracion del servidor Nginx local para entregar la aplicacion web estatica con politicas basicas de cache.

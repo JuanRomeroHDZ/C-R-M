@@ -14,6 +14,8 @@ from src.queue.redis_queue import queue_manager
 from src.api.categories import router as categories_router
 from src.api.jobs import router as jobs_router
 from src.api.leads import router as leads_router
+from src.api.audit import router as audit_router
+from src.api.deduplication import router as dedup_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -73,6 +75,8 @@ app.add_middleware(
 app.include_router(categories_router)
 app.include_router(jobs_router)
 app.include_router(leads_router)
+app.include_router(audit_router)
+app.include_router(dedup_router)
 
 
 def check_postgres() -> Dict[str, Any]:
@@ -121,8 +125,8 @@ async def health(response: Response) -> Dict[str, Any]:
 def system_status() -> Dict[str, Any]:
     return {
         "system": "Sistema de Captacion, Prospeccion y CRM Local",
-        "version": "2.0.0",
-        "phase": "Fase 2 - Motor de Extraccion Geolocalizado Hibrido (OSM + Google Maps)",
+        "version": "3.0.0",
+        "phase": "Fase 3 - Auditoria Tecnica Web, Modelo de Scoring y Deduplicacion Multicapa",
         "city_coverage": "Tijuana, Baja California",
         "environment": settings.ENVIRONMENT,
         "status": "operational"

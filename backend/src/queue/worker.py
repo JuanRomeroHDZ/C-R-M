@@ -345,14 +345,36 @@ class ExtractionWorker:
 
     async def run_worker_loop(self):
         self.is_running = True
-        logger.info("Extraction background worker loop initialized.")
+        logger.info("Extraction and analysis background worker loop initialized.")
         while self.is_running:
+            # 1. Process Extraction Jobs
             job_id = await queue_manager.get_next_job()
             if job_id:
-                logger.info(f"Worker picked up job {job_id} from queue.")
+                logger.info(f"Worker picked up extraction job {job_id} from queue.")
                 await self.execute_job(job_id)
-            else:
-                await asyncio.sleep(2.0)
+                continue
+
+            # 2. Process Deduplication Tasks
+            dedup_task = await queue_manager.get_next_dedup()
+            if dedup_task is not None:
+                from src.analysis.deduplication import run_multilayer_deduplication
+                logger.info(f"Worker processing deduplication task (Category: {dedup_task or 'ALL'})")
+                cat = dedup_task if dedup_task != "" else None
+                run_multilayer_deduplication(cat)
+                continue
+
+            # 3. Process Audit Tasks
+            audit_lead_id = await queue_manager.get_next_audit()
+            if audit_lead_id:
+                from src.analysis.pipeline import process_and_audit_lead
+                logger.info(f"Worker processing web audit for lead: {audit_lead_id}")
+                try:
+                    await process_and_audit_lead(audit_lead_id)
+                except Exception as audit_err:
+                    logger.warning(f"Error in background audit for lead {audit_lead_id}: {audit_err}")
+                continue
+
+            await asyncio.sleep(2.0)
 
 
 worker_instance = ExtractionWorker()

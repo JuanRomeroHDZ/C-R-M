@@ -92,6 +92,23 @@ class RedisJobQueue:
         r = await self.get_client()
         return await r.llen(f"crm:queue:cells:{job_id}")
 
+    # Audit & Deduplication Queues (Phase 3)
+    async def enqueue_audit(self, lead_id: str):
+        r = await self.get_client()
+        await r.rpush("crm:queue:audits", lead_id)
+
+    async def get_next_audit(self) -> Optional[str]:
+        r = await self.get_client()
+        return await r.lpop("crm:queue:audits")
+
+    async def enqueue_dedup(self, category_slug: Optional[str] = ""):
+        r = await self.get_client()
+        await r.rpush("crm:queue:dedup", category_slug or "")
+
+    async def get_next_dedup(self) -> Optional[str]:
+        r = await self.get_client()
+        return await r.lpop("crm:queue:dedup")
+
     # Circuit Breaker Cooldown
     async def set_circuit_breaker(self, cooldown_seconds: int, reason: str = ""):
         r = await self.get_client()

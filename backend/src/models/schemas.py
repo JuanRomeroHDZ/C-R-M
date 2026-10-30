@@ -122,7 +122,13 @@ class LeadOut(BaseModel):
     subcategories: List[str] = Field(default_factory=list)
     phone_raw: Optional[str] = None
     phone_normalized: Optional[str] = None
+    phone_e164: Optional[str] = None
+    phone_country: Optional[str] = None
+    phone_valid: Optional[bool] = None
     website: Optional[str] = None
+    normalized_domain: Optional[str] = None
+    has_dedicated_website: Optional[bool] = None
+    social_links: Dict[str, Any] = Field(default_factory=dict)
     address_raw: Optional[str] = None
     street: Optional[str] = None
     house_number: Optional[str] = None
@@ -139,6 +145,11 @@ class LeadOut(BaseModel):
     is_claimed: Optional[bool] = None
     lifecycle_stage: str
     extra_metadata: Dict[str, Any] = Field(default_factory=dict)
+    technical_health_score: Optional[float] = None
+    acceptance_probability_pct: Optional[float] = None
+    sales_arguments: List[str] = Field(default_factory=list)
+    audited_at: Optional[datetime] = None
+    qualified_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
     last_seen_at: datetime

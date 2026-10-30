@@ -79,7 +79,13 @@ CREATE TABLE IF NOT EXISTS leads (
     subcategories JSONB DEFAULT '[]'::jsonb,
     phone_raw VARCHAR(100),
     phone_normalized VARCHAR(50),
+    phone_e164 VARCHAR(50),
+    phone_country VARCHAR(10),
+    phone_valid BOOLEAN,
     website TEXT,
+    normalized_domain VARCHAR(255),
+    has_dedicated_website BOOLEAN,
+    social_links JSONB DEFAULT '{}'::jsonb,
     address_raw TEXT,
     street VARCHAR(255),
     house_number VARCHAR(50),
@@ -96,6 +102,11 @@ CREATE TABLE IF NOT EXISTS leads (
     is_claimed BOOLEAN,
     lifecycle_stage VARCHAR(50) DEFAULT 'EXTRACTED' NOT NULL,
     extra_metadata JSONB DEFAULT '{}'::jsonb,
+    technical_health_score NUMERIC(5, 2),
+    acceptance_probability_pct NUMERIC(5, 2),
+    sales_arguments JSONB DEFAULT '[]'::jsonb,
+    audited_at TIMESTAMPTZ,
+    qualified_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
     last_seen_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
@@ -103,6 +114,77 @@ CREATE TABLE IF NOT EXISTS leads (
     deleted_at TIMESTAMPTZ,
     CONSTRAINT unique_source_external_id UNIQUE(external_source, external_id)
 );
+
+-- Migrations for existing tables if columns missing
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS phone_e164 VARCHAR(50);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS phone_country VARCHAR(10);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS phone_valid BOOLEAN;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS normalized_domain VARCHAR(255);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS has_dedicated_website BOOLEAN;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS social_links JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS technical_health_score NUMERIC(5, 2);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS acceptance_probability_pct NUMERIC(5, 2);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS sales_arguments JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS audited_at TIMESTAMPTZ;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS qualified_at TIMESTAMPTZ;
+
+CREATE TABLE IF NOT EXISTS lead_web_audits (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    lead_id UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+    domain VARCHAR(255) NOT NULL,
+    url_checked TEXT NOT NULL,
+    dns_resolved BOOLEAN DEFAULT FALSE,
+    ip_address VARCHAR(100),
+    http_status_code INT,
+    redirect_count INT DEFAULT 0,
+    final_url TEXT,
+    has_ssl BOOLEAN DEFAULT FALSE,
+    ssl_valid BOOLEAN DEFAULT FALSE,
+    ssl_days_remaining INT,
+    ssl_issuer VARCHAR(255),
+    is_self_signed BOOLEAN DEFAULT FALSE,
+    redirects_to_https BOOLEAN DEFAULT FALSE,
+    ttfb_ms NUMERIC(10, 2),
+    download_time_ms NUMERIC(10, 2),
+    html_size_bytes INT,
+    compression_type VARCHAR(50),
+    has_viewport BOOLEAN DEFAULT FALSE,
+    viewport_content VARCHAR(255),
+    technologies JSONB DEFAULT '[]'::jsonb,
+    has_title BOOLEAN DEFAULT FALSE,
+    title_text TEXT,
+    has_description BOOLEAN DEFAULT FALSE,
+    description_text TEXT,
+    h1_count INT DEFAULT 0,
+    has_canonical BOOLEAN DEFAULT FALSE,
+    has_open_graph BOOLEAN DEFAULT FALSE,
+    has_schema_local_business BOOLEAN DEFAULT FALSE,
+    has_google_analytics BOOLEAN DEFAULT FALSE,
+    has_google_tag_manager BOOLEAN DEFAULT FALSE,
+    has_meta_pixel BOOLEAN DEFAULT FALSE,
+    has_tiktok_pixel BOOLEAN DEFAULT FALSE,
+    technical_health_score NUMERIC(5, 2),
+    acceptance_probability_pct NUMERIC(5, 2),
+    findings JSONB DEFAULT '[]'::jsonb,
+    audit_duration_seconds NUMERIC(8, 3),
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS deduplication_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    master_lead_id UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+    merged_lead_id UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+    merge_reason VARCHAR(100) NOT NULL,
+    similarity_score NUMERIC(5, 4),
+    details JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_leads_phone_e164 ON leads(phone_e164);
+CREATE INDEX IF NOT EXISTS idx_leads_domain ON leads(normalized_domain);
+CREATE INDEX IF NOT EXISTS idx_leads_acceptance_score ON leads(acceptance_probability_pct);
+CREATE INDEX IF NOT EXISTS idx_web_audits_lead ON lead_web_audits(lead_id);
+CREATE INDEX IF NOT EXISTS idx_dedup_master ON deduplication_history(master_lead_id);
 
 CREATE INDEX IF NOT EXISTS idx_leads_category ON leads(category_slug);
 CREATE INDEX IF NOT EXISTS idx_leads_lifecycle ON leads(lifecycle_stage);
