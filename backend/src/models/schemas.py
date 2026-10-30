@@ -143,6 +143,10 @@ class LeadOut(BaseModel):
     review_count: int = 0
     opening_hours_raw: Optional[str] = None
     is_claimed: Optional[bool] = None
+    email: Optional[str] = None
+    has_whatsapp: bool = True
+    channels_status: Dict[str, Any] = Field(default_factory=dict)
+    first_contact_at: Optional[datetime] = None
     lifecycle_stage: str
     extra_metadata: Dict[str, Any] = Field(default_factory=dict)
     technical_health_score: Optional[float] = None

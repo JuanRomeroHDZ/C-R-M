@@ -180,11 +180,65 @@ CREATE TABLE IF NOT EXISTS deduplication_history (
     created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
 
+-- Phase 4 Migrations: Channels, Activity, Calendar, and OAuth
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS email VARCHAR(255);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS has_whatsapp BOOLEAN DEFAULT TRUE;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS channels_status JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS first_contact_at TIMESTAMPTZ;
+
+CREATE TABLE IF NOT EXISTS lead_activity_log (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    lead_id UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+    channel VARCHAR(50) NOT NULL,
+    action VARCHAR(50) NOT NULL,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS calendar_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    lead_id UUID REFERENCES leads(id) ON DELETE SET NULL,
+    title VARCHAR(255) NOT NULL,
+    event_type VARCHAR(50) NOT NULL DEFAULT 'Llamada',
+    start_time TIMESTAMPTZ NOT NULL,
+    end_time TIMESTAMPTZ NOT NULL,
+    notes TEXT,
+    status VARCHAR(50) NOT NULL DEFAULT 'Pendiente',
+    google_event_id VARCHAR(255),
+    sync_status VARCHAR(50) NOT NULL DEFAULT 'LOCAL_ONLY',
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS oauth_tokens (
+    id SERIAL PRIMARY KEY,
+    provider VARCHAR(50) NOT NULL UNIQUE DEFAULT 'google',
+    access_token TEXT NOT NULL,
+    refresh_token TEXT,
+    token_type VARCHAR(50) DEFAULT 'Bearer',
+    expires_at TIMESTAMPTZ,
+    scope TEXT,
+    user_email VARCHAR(255),
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS system_settings (
+    key VARCHAR(100) PRIMARY KEY,
+    value TEXT NOT NULL,
+    description TEXT,
+    updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_leads_phone_e164 ON leads(phone_e164);
 CREATE INDEX IF NOT EXISTS idx_leads_domain ON leads(normalized_domain);
 CREATE INDEX IF NOT EXISTS idx_leads_acceptance_score ON leads(acceptance_probability_pct);
 CREATE INDEX IF NOT EXISTS idx_web_audits_lead ON lead_web_audits(lead_id);
 CREATE INDEX IF NOT EXISTS idx_dedup_master ON deduplication_history(master_lead_id);
+CREATE INDEX IF NOT EXISTS idx_activity_lead ON lead_activity_log(lead_id);
+CREATE INDEX IF NOT EXISTS idx_calendar_events_start ON calendar_events(start_time);
+CREATE INDEX IF NOT EXISTS idx_calendar_events_lead ON calendar_events(lead_id);
 
 CREATE INDEX IF NOT EXISTS idx_leads_category ON leads(category_slug);
 CREATE INDEX IF NOT EXISTS idx_leads_lifecycle ON leads(lifecycle_stage);
@@ -275,5 +329,14 @@ def init_database_schema():
                         """,
                         (category_id, key, val)
                     )
+
+            # Seed default system settings
+            cur.execute(
+                """
+                INSERT INTO system_settings (key, value, description)
+                VALUES ('whatsapp_template', 'Hola, buen día.', 'Mensaje inicial predeterminado para WhatsApp')
+                ON CONFLICT (key) DO NOTHING;
+                """
+            )
 
             logger.info("Initial seed categories and keywords committed.")

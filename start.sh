@@ -202,6 +202,7 @@ get_lan_ip() {
 }
 
 LAN_IP="$(get_lan_ip)"
+set_env_var "HOST_LAN_IP" "${LAN_IP}"
 
 # ------------------------------------------------------------------------------
 # 5. Resumen de asignacion de infraestructura

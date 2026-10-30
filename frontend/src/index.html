@@ -3,104 +3,447 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CRM Engine - Infraestructura Local</title>
+  <title>CRM Local - Tijuana, BC</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="layout">
-    <header>
-      <div class="header-top">
-        <h1>Sistema de Captacion y CRM Local</h1>
-        <span class="tag">Fase 1: Infraestructura</span>
+
+  <!-- Lucide SVG Vector Sprite (Sober monochrome iconography, zero emojis) -->
+  <svg style="display: none;" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="icon-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+    </symbol>
+    <symbol id="icon-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/>
+    </symbol>
+    <symbol id="icon-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>
+    </symbol>
+    <symbol id="icon-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+    </symbol>
+    <symbol id="icon-message-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>
+    </symbol>
+    <symbol id="icon-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+    </symbol>
+    <symbol id="icon-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+    </symbol>
+    <symbol id="icon-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>
+    </symbol>
+    <symbol id="icon-external-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+    </symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 6 9 17l-5-5"/>
+    </symbol>
+    <symbol id="icon-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+    </symbol>
+    <symbol id="icon-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5 12h14"/><path d="M12 5v14"/>
+    </symbol>
+    <symbol id="icon-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+    </symbol>
+    <symbol id="icon-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+    </symbol>
+    <symbol id="icon-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>
+    </symbol>
+    <symbol id="icon-activity" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+    </symbol>
+    <symbol id="icon-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+    </symbol>
+    <symbol id="icon-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/>
+    </symbol>
+    <symbol id="icon-share-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/>
+    </symbol>
+  </svg>
+
+  <div class="app-container">
+    <!-- Desktop Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="brand">
+          <svg style="width:16px;height:16px;" stroke="currentColor" fill="none"><use href="#icon-shield"/></svg>
+          CRM Local
+        </div>
+        <span class="brand-tag">Tijuana</span>
       </div>
-      <p class="subtitle">Plataforma autonoma de prospeccion y gestion comercial en Tijuana, BC.</p>
-    </header>
 
-    <main>
-      <div class="section-title">Estado de Servicios en Contenedores</div>
-      <div class="grid">
-        <div class="card" id="card-proxy">
-          <div class="card-header">
-            <span class="card-title">Proxy Inverso</span>
-            <span class="status-dot online" id="dot-proxy"></span>
+      <nav class="sidebar-nav">
+        <button class="nav-item active" id="nav-btn-leads" data-view="leads">
+          <span class="nav-left">
+            <svg style="width:16px;height:16px;" stroke="currentColor" fill="none"><use href="#icon-users"/></svg>
+            Prospectos
+          </span>
+          <span class="nav-badge" id="badge-leads-count">0</span>
+        </button>
+
+        <button class="nav-item" id="nav-btn-calendar" data-view="calendar">
+          <span class="nav-left">
+            <svg style="width:16px;height:16px;" stroke="currentColor" fill="none"><use href="#icon-calendar"/></svg>
+            Agenda
+          </span>
+          <span class="nav-badge" id="badge-events-count" style="display: none;">0</span>
+        </button>
+
+        <button class="nav-item" id="nav-btn-settings" data-view="settings">
+          <span class="nav-left">
+            <svg style="width:16px;height:16px;" stroke="currentColor" fill="none"><use href="#icon-settings"/></svg>
+            Ajustes
+          </span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="live-indicator">
+          <span class="live-dot" id="live-reload-dot"></span>
+          <span id="live-reload-text">Conectado en vivo</span>
+        </div>
+        <div id="sidebar-lan-label" style="font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);">
+          192.168.100.96:32662
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Wrapper -->
+    <div class="main-wrapper">
+      <!-- Top Navigation Bar -->
+      <header class="top-bar">
+        <div class="top-title" id="page-title">Directorio de Prospectos Calificados</div>
+        <div class="top-actions">
+          <button class="btn-action" id="top-btn-new-event">
+            <svg style="width:14px;height:14px;" stroke="currentColor" fill="none"><use href="#icon-plus"/></svg>
+            Agendar Cita
+          </button>
+          <button class="btn-icon-only" id="top-btn-refresh" title="Actualizar datos">
+            <svg style="width:14px;height:14px;" stroke="currentColor" fill="none"><use href="#icon-refresh"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Content Views -->
+      <main class="content-body">
+        
+        <!-- ========================================== -->
+        <!-- VIEW 1: LEADS (PROSPECTOS)                 -->
+        <!-- ========================================== -->
+        <section id="view-leads" class="view-panel">
+          <div class="controls-panel">
+            <div class="search-box">
+              <svg class="search-icon" style="width:14px;height:14px;"><use href="#icon-search"/></svg>
+              <input type="text" id="leads-search-input" class="input-text" placeholder="Buscar por nombre, calle o telefono...">
+            </div>
+
+            <div class="filter-group" id="category-filters">
+              <button class="filter-btn active" data-category="">Todos</button>
+              <button class="filter-btn" data-category="dentistas">Dentistas</button>
+              <button class="filter-btn" data-category="despachos-contables">Despachos Contables</button>
+            </div>
+
+            <div class="filter-group">
+              <select id="stage-filter-select" class="form-select" style="padding: 6px 10px; font-size: 12px; height: 32px;">
+                <option value="">Todas las etapas</option>
+                <option value="QUALIFIED">Calificado</option>
+                <option value="FIRST_CONTACT">Primer Contacto</option>
+                <option value="IN_CONVERSATION">En Conversacion</option>
+                <option value="NEGOTIATION">En Negociacion</option>
+                <option value="CLOSED_WON">Cerrado Ganado</option>
+                <option value="AUDITED">Auditado</option>
+                <option value="EXTRACTED">Extraido</option>
+              </select>
+            </div>
           </div>
-          <div class="card-value" id="val-proxy">Activo</div>
-          <div class="card-meta">Enrutamiento perimetral</div>
+
+          <!-- Counter and Status Strip -->
+          <div class="meta-stats" style="margin-bottom: 16px; font-size: 11px;">
+            <span>Total: <strong id="stat-total-leads">0</strong></span>
+            <span>&bull;</span>
+            <span>Con WhatsApp: <strong id="stat-whatsapp-leads">0</strong></span>
+            <span>&bull;</span>
+            <span>Calificados: <strong id="stat-qualified-leads">0</strong></span>
+            <span>&bull;</span>
+            <span>Cobertura: <strong>Tijuana, BC</strong></span>
+          </div>
+
+          <!-- Cards Grid -->
+          <div class="leads-grid" id="leads-grid-container">
+            <!-- Dynamically populated cards -->
+          </div>
+
+          <div id="leads-empty-state" style="display:none; text-align:center; padding: 48px 16px; color: var(--text-muted);">
+            No se encontraron prospectos que coincidan con el criterio seleccionado.
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- VIEW 2: CALENDAR (AGENDA)                  -->
+        <!-- ========================================== -->
+        <section id="view-calendar" class="view-panel calendar-view" style="display: none;">
+          <div class="calendar-top">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <span class="oauth-badge" id="calendar-oauth-badge">Modo Local Activo (Conectar Gmail opcional)</span>
+              <button class="btn-action" id="btn-request-notifications" style="font-size: 11px; height: 28px;">
+                <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-bell"/></svg>
+                Habilitar Alertas
+              </button>
+            </div>
+            <button class="btn-action" id="btn-calendar-add-event">
+              <svg style="width:14px;height:14px;" stroke="currentColor" fill="none"><use href="#icon-plus"/></svg>
+              Nueva Cita
+            </button>
+          </div>
+
+          <!-- Alert Banner for Today's Imminent Events -->
+          <div id="imminent-alerts-banner" style="display:none; background-color: var(--badge-amber-bg); border: 1px solid rgba(255,183,77,0.3); border-radius: var(--radius-sm); padding: 10px 14px; font-size: 12px; color: var(--badge-amber-text);">
+            <!-- Alert message injected here -->
+          </div>
+
+          <div class="events-list" id="calendar-events-list">
+            <!-- Dynamically populated events -->
+          </div>
+
+          <div id="calendar-empty-state" style="display:none; text-align:center; padding: 48px 16px; color: var(--text-muted);">
+            No hay citas o seguimientos programados. Usa el boton "Nueva Cita" para agendar.
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- VIEW 3: SETTINGS (AJUSTES)                 -->
+        <!-- ========================================== -->
+        <section id="view-settings" class="view-panel" style="display: none;">
+          <div style="display: flex; flex-direction: column; gap: 20px; max-width: 800px;">
+            
+            <!-- WhatsApp Template Settings -->
+            <div class="lead-card">
+              <div class="card-top">
+                <div class="lead-name">Mensaje Predeterminado de WhatsApp</div>
+                <span class="brand-tag">wa.me</span>
+              </div>
+              <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
+                Texto base que se cargara en WhatsApp al hacer clic en contactar. No realiza auto-envio (deja el mensaje en el cuadro de texto para tu revision previa). Usa la variable <code>{nombre}</code> para insertar el nombre del contacto o empresa.
+              </p>
+              <div class="form-group">
+                <textarea id="settings-whatsapp-template" class="form-textarea" placeholder="Ej: Hola {nombre}, buen dia."></textarea>
+              </div>
+              <div class="form-actions" style="margin-top: 12px;">
+                <button class="btn-action" id="btn-save-whatsapp-template">Guardar Plantilla</button>
+              </div>
+            </div>
+
+            <!-- LAN and Network Settings -->
+            <div class="lead-card">
+              <div class="card-top">
+                <div class="lead-name">Acceso en Red Local (LAN) y Dispositivos Moviles</div>
+                <span class="brand-tag">Wi-Fi LAN</span>
+              </div>
+              <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
+                Conectate a este sistema desde cualquier smartphone o tablet en tu misma red Wi-Fi residencial o de oficina sin necesidad de configurar puertos en el router.
+              </p>
+              <div style="display: flex; flex-direction: column; gap: 8px; font-family: var(--font-mono); font-size: 12px;">
+                <div style="display: flex; justify-content: space-between; padding: 8px; background: var(--bg-app); border-radius: var(--radius-sm); border: 1px solid var(--border);">
+                  <span style="color: var(--text-secondary);">Enlace Local (Esta PC):</span>
+                  <a id="link-local-pc" href="#" target="_blank" style="color: var(--text-main); text-decoration: none;">http://localhost:32662</a>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: var(--bg-app); border-radius: var(--radius-sm); border: 1px solid var(--border);">
+                  <span style="color: var(--text-secondary);">Enlace Movil / LAN:</span>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <a id="link-lan-mobile" href="#" target="_blank" style="color: var(--badge-green-text); text-decoration: none; font-weight: 600;">http://192.168.100.96:32662</a>
+                    <button class="btn-icon-only" id="btn-copy-lan-url" title="Copiar enlace LAN" style="width: 24px; height: 24px;">
+                      <svg style="width:12px;height:12px;" stroke="currentColor" fill="none"><use href="#icon-copy"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Google Calendar OAuth Settings -->
+            <div class="lead-card">
+              <div class="card-top">
+                <div class="lead-name">Sincronizacion con Google Calendar (Opcional)</div>
+                <span class="brand-tag">OAuth 2.0</span>
+              </div>
+              <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
+                El sistema funciona al 100% en modo local sin requerir credenciales externas. Si deseas sincronizar tu agenda con tu cuenta de Google, ingresa tus credenciales de Google Cloud Console.
+              </p>
+              <div class="form-group" style="margin-bottom: 10px;">
+                <label class="form-label">Client ID:</label>
+                <input type="text" id="oauth-client-id" class="form-input" placeholder="Ingresa Client ID de Google Cloud">
+              </div>
+              <div class="form-group" style="margin-bottom: 12px;">
+                <label class="form-label">Client Secret:</label>
+                <input type="password" id="oauth-client-secret" class="form-input" placeholder="Ingresa Client Secret de Google Cloud">
+              </div>
+              <div class="form-actions">
+                <button class="btn-action" id="btn-connect-google">Vincular con Google</button>
+              </div>
+            </div>
+
+            <!-- Diagnostics -->
+            <div class="lead-card">
+              <div class="card-top">
+                <div class="lead-name">Diagnostico de Modulos y Hot Reload</div>
+                <span class="brand-tag">v4.0.0</span>
+              </div>
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 10px;">
+                <div style="background: var(--bg-app); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+                  <div style="font-size: 11px; color: var(--text-secondary);">Motor de Enriquecimiento</div>
+                  <div style="font-size: 12px; font-weight: 600; color: var(--badge-green-text); margin-top: 4px;">Activo</div>
+                </div>
+                <div style="background: var(--bg-app); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+                  <div style="font-size: 11px; color: var(--text-secondary);">Canales Universales</div>
+                  <div style="font-size: 12px; font-weight: 600; color: var(--badge-green-text); margin-top: 4px;">wa.me / tel / mailto</div>
+                </div>
+                <div style="background: var(--bg-app); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+                  <div style="font-size: 11px; color: var(--text-secondary);">WebSocket Live Reload</div>
+                  <div style="font-size: 12px; font-weight: 600; color: var(--badge-green-text); margin-top: 4px;" id="diag-ws-status">Conectado</div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- Mobile Bottom Navigation Bar -->
+  <nav class="mobile-nav">
+    <button class="mobile-nav-item active" data-view="leads" id="mob-nav-leads">
+      <svg style="width:18px;height:18px;" stroke="currentColor" fill="none"><use href="#icon-users"/></svg>
+      <span>Prospectos</span>
+    </button>
+    <button class="mobile-nav-item" data-view="calendar" id="mob-nav-calendar">
+      <svg style="width:18px;height:18px;" stroke="currentColor" fill="none"><use href="#icon-calendar"/></svg>
+      <span>Agenda</span>
+    </button>
+    <button class="mobile-nav-item" data-view="settings" id="mob-nav-settings">
+      <svg style="width:18px;height:18px;" stroke="currentColor" fill="none"><use href="#icon-settings"/></svg>
+      <span>Ajustes</span>
+    </button>
+  </nav>
+
+  <!-- ========================================== -->
+  <!-- MODALS                                     -->
+  <!-- ========================================== -->
+
+  <!-- Modal: New Calendar Event -->
+  <div class="modal-backdrop" id="modal-event" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title">Agendar Cita o Seguimiento</div>
+        <button class="btn-icon-only" id="modal-event-close" style="width: 28px; height: 28px;">
+          <svg style="width:14px;height:14px;" stroke="currentColor" fill="none"><use href="#icon-x"/></svg>
+        </button>
+      </div>
+
+      <form id="form-new-event">
+        <div class="form-group">
+          <label class="form-label">Prospecto Asociado:</label>
+          <select id="event-lead-id" class="form-select" required>
+            <option value="">Selecciona un prospecto...</option>
+          </select>
         </div>
 
-        <div class="card" id="card-backend">
-          <div class="card-header">
-            <span class="card-title">Backend API</span>
-            <span class="status-dot" id="dot-backend"></span>
-          </div>
-          <div class="card-value" id="val-backend">Consultando...</div>
-          <div class="card-meta">Motor asincrono FastAPI</div>
+        <div class="form-group" style="margin-top: 10px;">
+          <label class="form-label">Titulo del Evento:</label>
+          <input type="text" id="event-title" class="form-input" placeholder="Ej: Llamada de presentacion de propuesta" required>
         </div>
 
-        <div class="card" id="card-db">
-          <div class="card-header">
-            <span class="card-title">PostgreSQL</span>
-            <span class="status-dot" id="dot-db"></span>
-          </div>
-          <div class="card-value" id="val-db">Consultando...</div>
-          <div class="card-meta">Persistencia relacional</div>
+        <div class="form-group" style="margin-top: 10px;">
+          <label class="form-label">Tipo de Contacto:</label>
+          <select id="event-type" class="form-select">
+            <option value="LLAMADA">Llamada Telefonica</option>
+            <option value="WHATSAPP">Seguimiento por WhatsApp</option>
+            <option value="DEMO">Demostracion Tecnica</option>
+            <option value="REUNION">Reunion Presencial / Remota</option>
+            <option value="OTRO">Otro</option>
+          </select>
         </div>
 
-        <div class="card" id="card-redis">
-          <div class="card-header">
-            <span class="card-title">Redis</span>
-            <span class="status-dot" id="dot-redis"></span>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
+          <div class="form-group">
+            <label class="form-label">Fecha y Hora de Inicio:</label>
+            <input type="datetime-local" id="event-start-time" class="form-input" required>
           </div>
-          <div class="card-value" id="val-redis">Consultando...</div>
-          <div class="card-meta">Colas y cache en memoria</div>
+          <div class="form-group">
+            <label class="form-label">Fecha y Hora de Fin:</label>
+            <input type="datetime-local" id="event-end-time" class="form-input" required>
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-top: 10px;">
+          <label class="form-label">Notas Preparatorias:</label>
+          <textarea id="event-notes" class="form-textarea" placeholder="Notas sobre la propuesta, objeciones o contexto previo..."></textarea>
+        </div>
+
+        <div class="form-actions" style="margin-top: 16px;">
+          <button type="button" class="btn-action" id="modal-event-cancel">Cancelar</button>
+          <button type="submit" class="btn-action" style="background-color: var(--border-light); font-weight: 600;">Guardar Cita</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Technical Audit & Sales Arguments Detail -->
+  <div class="modal-backdrop" id="modal-audit" style="display: none;">
+    <div class="modal-content" style="max-width: 600px;">
+      <div class="modal-header">
+        <div class="modal-title" id="modal-audit-lead-name">Auditoria Tecnica y Calificacion</div>
+        <button class="btn-icon-only" id="modal-audit-close" style="width: 28px; height: 28px;">
+          <svg style="width:14px;height:14px;" stroke="currentColor" fill="none"><use href="#icon-x"/></svg>
+        </button>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 14px; max-height: 70vh; overflow-y: auto; padding-right: 4px;">
+        <div style="display: flex; gap: 12px; align-items: center;">
+          <div style="flex: 1; background: var(--bg-app); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+            <div style="font-size: 11px; color: var(--text-secondary);">Salud Tecnica Web</div>
+            <div style="font-size: 18px; font-weight: 700; font-family: var(--font-mono); color: var(--text-main);" id="modal-health-score">--</div>
+          </div>
+          <div style="flex: 1; background: var(--bg-app); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+            <div style="font-size: 11px; color: var(--text-secondary);">Probabilidad de Cierre</div>
+            <div style="font-size: 18px; font-weight: 700; font-family: var(--font-mono); color: var(--badge-green-text);" id="modal-prob-score">--</div>
+          </div>
+        </div>
+
+        <div>
+          <div class="form-label" style="margin-bottom: 6px;">Canales de Contacto Detectados:</div>
+          <div id="modal-channels-list" style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <!-- Injected dynamically -->
+          </div>
+        </div>
+
+        <div>
+          <div class="form-label" style="margin-bottom: 6px;">Argumentos de Venta Personalizados:</div>
+          <div id="modal-sales-arguments" class="findings-box" style="margin-bottom: 0;">
+            <!-- Injected dynamically -->
+          </div>
+        </div>
+
+        <div>
+          <div class="form-label" style="margin-bottom: 6px;">Historial de Interacciones:</div>
+          <div id="modal-activity-log" style="font-size: 11px; color: var(--text-secondary); background: var(--bg-app); padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+            Consultando registros...
+          </div>
         </div>
       </div>
 
-      <div class="section-title">Especificaciones del Entorno</div>
-      <div class="panel">
-        <table class="info-table">
-          <thead>
-            <tr>
-              <th>Componente</th>
-              <th>Propiedad</th>
-              <th>Valor / Estado</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Red</td>
-              <td>Aislamiento</td>
-              <td class="code-cell">Puente interno (crm_network)</td>
-            </tr>
-            <tr>
-              <td>Geolocalizacion</td>
-              <td>Zona de Cobertura</td>
-              <td class="code-cell">Tijuana, Baja California</td>
-            </tr>
-            <tr>
-              <td>Asignacion de Puertos</td>
-              <td>Mapeo de Host</td>
-              <td class="code-cell">Deteccion y asignacion dinamica</td>
-            </tr>
-            <tr>
-              <td>Persistencia</td>
-              <td>Volumenes Docker</td>
-              <td class="code-cell">crm_postgres_data, crm_redis_data</td>
-            </tr>
-            <tr>
-              <td>Disponibilidad LAN</td>
-              <td>Acceso en Red Local</td>
-              <td class="code-cell" id="lan-access">Habilitado bajo Doble NAT</td>
-            </tr>
-          </tbody>
-        </table>
+      <div class="form-actions">
+        <button type="button" class="btn-action" id="modal-audit-done">Cerrar</button>
       </div>
-    </main>
-
-    <footer>
-      <div>Arquitectura de microservicios locales orientada a Debian Linux</div>
-      <button class="refresh-btn" id="btn-refresh" type="button">Actualizar Estado</button>
-    </footer>
+    </div>
   </div>
 
   <script src="app.js"></script>

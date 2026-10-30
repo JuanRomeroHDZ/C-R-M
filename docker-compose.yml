@@ -58,6 +58,8 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
       SCRAPER_CONCURRENCY_LIMIT: ${SCRAPER_CONCURRENCY_LIMIT:-5}
+      HOST_PORT_PROXY: ${HOST_PORT_PROXY:-8080}
+      HOST_LAN_IP: ${HOST_LAN_IP:-192.168.100.96}
     ports:
       - "${HOST_BIND_IP:-127.0.0.1}:${HOST_PORT_BACKEND}:8000"
     volumes:
@@ -78,6 +80,8 @@ services:
     restart: unless-stopped
     ports:
       - "${HOST_BIND_IP:-127.0.0.1}:${HOST_PORT_FRONTEND}:80"
+    volumes:
+      - ./frontend/src:/usr/share/nginx/html
     networks:
       - crm_network
 

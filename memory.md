@@ -39,13 +39,18 @@ Documento de referencia para navegacion e indexacion por agentes de inteligencia
 - `backend/src/api/deduplication.py`: Endpoints para detonar la normalizacion y consolidacion multicapa de contactos y consultar el historial cronologico de registros fusionados.
 - `backend/src/verify_extraction.py`: Rutina de verificacion ejecutable para comprobar la extraccion real de prospectos en Zona Rio sin emplear datos simulados.
 - `backend/src/verify_phase3.py`: Script de verificacion integral para comprobar deduplicacion real, auditoria tecnica web en vivo, calculo predictivo de cierre y transicion en pipeline.
+-`backend/src/analysis/channel_enricher.py`: Motor de enriquecimiento que extrae enlaces sociales, telefonos y correos desde sitios web reales clasificando disponibilidad de canales sin auto-envio.
+- `backend/src/api/interactions.py`: Endpoints para consultar tarjetas de contacto enriquecidas, registrar interacciones con avance de etapa y marcar prospectos sin WhatsApp en un clic.
+- `backend/src/api/calendar.py`: Endpoints REST para agendar citas locales, consultar alertas inminentes y gestionar la integracion opcional con Google Calendar OAuth 2.0.
+- `backend/src/api/settings.py`: Endpoints para consultar y actualizar la plantilla de WhatsApp y leer parametros de red local e IP LAN para dispositivos moviles.
+- `backend/src/api/dev_reload.py`: Endpoint WebSocket para deteccion de cambios y recarga automatica en caliente sincronizada entre navegadores de escritorio y dispositivos moviles.
 - `frontend/`: Directorio del servicio web cliente con interfaz responsiva, ligera y estetica minimalista en escala de grises.
 - `frontend/Dockerfile`: Imagen ligera Nginx Alpine encargada de servir los archivos estaticos del frontend con comprobacion de salud integrada.
 - `frontend/nginx.conf`: Configuracion del servidor Nginx local para entregar la aplicacion web estatica con politicas basicas de cache.
 - `frontend/src/`: Codigo fuente del frontend compuesto por estructura HTML, estilos monocromaticos y logica JavaScript del cliente.
-- `frontend/src/index.html`: Estructura HTML responsiva con diseno minimalista neutro en escala de grises para el panel de estado.
-- `frontend/src/styles.css`: Hojas de estilo CSS inspiradas en Notion y Obsidian con paleta monocromatica y componentes visuales adaptativos.
-- `frontend/src/app.js`: Script del cliente para consultar periodicamente la API y mostrar el estado de conexion de los servicios.
+- `frontend/src/index.html`: Estructura HTML con diseno Notion y Obsidian, iconos Lucide SVG, directorio de prospectos, agenda de citas y panel de ajustes.
+- `frontend/src/styles.css`: Hojas de estilo CSS inspiradas en Notion y Obsidian con paleta monocromatica pizarra, tarjetas, modales y barra de navegacion inferior movil.
+- `frontend/src/app.js`: Logica del cliente con navegacion entre vistas, filtros reactivos, redirecciones wa.me, gestion de agenda local y cliente WebSocket live reload.
 - `proxy/`: Directorio del proxy perimetral de enrutamiento inverso y aislamiento de seguridad de la red interna de contenedores.
 - `proxy/Dockerfile`: Contenedor Nginx Alpine optimizado para gestionar el trafico perimetral y transferir solicitudes entre el host y servicios.
 - `proxy/nginx.conf`: Reglas de enrutamiento que redirigen /api y /health al backend y el trafico raiz al frontend.

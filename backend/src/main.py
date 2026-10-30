@@ -16,6 +16,10 @@ from src.api.jobs import router as jobs_router
 from src.api.leads import router as leads_router
 from src.api.audit import router as audit_router
 from src.api.deduplication import router as dedup_router
+from src.api.calendar import router as calendar_router
+from src.api.interactions import router as interactions_router
+from src.api.settings import router as settings_router
+from src.api.dev_reload import router as dev_reload_router, broadcast_reload
 
 logging.basicConfig(
     level=logging.INFO,
@@ -65,7 +69,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -77,6 +81,10 @@ app.include_router(jobs_router)
 app.include_router(leads_router)
 app.include_router(audit_router)
 app.include_router(dedup_router)
+app.include_router(calendar_router)
+app.include_router(interactions_router)
+app.include_router(settings_router)
+app.include_router(dev_reload_router)
 
 
 def check_postgres() -> Dict[str, Any]:
@@ -125,8 +133,8 @@ async def health(response: Response) -> Dict[str, Any]:
 def system_status() -> Dict[str, Any]:
     return {
         "system": "Sistema de Captacion, Prospeccion y CRM Local",
-        "version": "3.0.0",
-        "phase": "Fase 3 - Auditoria Tecnica Web, Modelo de Scoring y Deduplicacion Multicapa",
+        "version": "4.0.0",
+        "phase": "Fase 4 - Enriquecimiento de Contactos, Redirecciones, Calendario y Modo Desarrollador",
         "city_coverage": "Tijuana, Baja California",
         "environment": settings.ENVIRONMENT,
         "status": "operational"
