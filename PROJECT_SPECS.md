@@ -99,10 +99,13 @@ El sistema prioriza la soberania de datos, ejecutandose integramente dentro del 
 - Reglas de transicion y captura obligatoria de motivos en etapas de arrepentimiento y descarte.
 - Persistencia integral con borrado logico y auditoria de cambios.
 
-### Fase 6: Interfaz de Usuario, Panel Modular y Onboarding
-- Maquetacion responsiva y accesible bajo escala de grises estilo Notion/Obsidian.
-- Panel de configuracion modular avanzado (parametros de scraping, pesos de scoring, red).
-- Flujo interactivo guiado para el arranque inicial (onboarding).
+### Fase 6: Seguridad AppSec, Mapa Interactivo, Ajustes Modulares y Metricas (Completada)
+- Endurecimiento estricto de seguridad: Argon2id para PIN de operador en red local y AES-256-GCM derivado con HKDF-SHA256 para tokens OAuth en reposo.
+- Blindaje contra inyecciones XSS y HTML mediante sanitizacion estricta y limitacion de tasa de peticiones con cabeceras de seguridad perimetrales.
+- Mapa interactivo de Tijuana autoalojado con Leaflet 1.9.4 offline, capas de poligonos por delegaciones, marcadores de prospectos por calificacion y monitor de barrido en tiempo real.
+- Panel de Ajustes Modular Avanzado con 8 modulos independientes: Operador, Categorias y Palabras Negativas, Motor Scraper, Calibracion de Scoring con Recalculo Masivo, Plantillas WhatsApp con Toggles de Canales, Reglas de Pipeline, Calendario/Gmail y Respaldos/Mantenimiento.
+- Panel de Metricas Comerciales con embudo visual de 12 fases, porcentaje de retencion, post-mortem de objeciones y distribucion por rubro y delegacion.
+- Recorrido guiado nativo Spotlight Onboarding de 6 pasos con persistencia local y en base de datos.
 
 ---
 

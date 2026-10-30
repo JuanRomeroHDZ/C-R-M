@@ -56,19 +56,26 @@ CRM/
 |-- memory.md                 # Indice sintetico de rutas para agentes IA
 |-- backend/
 |   |-- Dockerfile            # Imagen base Python 3.12 Debian para FastAPI
-|   |-- requirements.txt      # Dependencias de Python (FastAPI, psycopg, redis)
+|   |-- requirements.txt      # Dependencias de Python (FastAPI, psycopg, redis, argon2, cryptography)
 |   `-- src/
-|       `-- main.py           # API principal y endpoints de salud
+|       |-- main.py           # API principal y endpoints de salud
+|       |-- security/         # Blindaje AppSec (Argon2id, AES-256-GCM HKDF, sanitizacion)
+|       |-- geo/              # Limites perimetrales y division quadtree de Tijuana
+|       |-- extractors/       # Motores de extraccion hibrida OSM Overpass y Google Maps
+|       |-- analysis/         # Deduplicacion, auditoria web tecnica y lead scoring predictivo
+|       |-- pipeline/         # Maquina de estados del pipeline comercial de 12 etapas
+|       `-- api/              # Endpoints REST (jobs, leads, pipeline, calendar, geo, metrics, settings)
 |-- frontend/
 |   |-- Dockerfile            # Servidor Nginx para interfaz estatica responsiva
-|   |-- nginx.conf            # Configuracion de entrega de activos web
+|   |-- nginx.conf            # Configuracion de entrega de activos web y politicas sin cache
 |   `-- src/
-|       |-- app.js            # Logica de sondeo y estado del frontend
-|       |-- index.html        # Vista principal minimalista (estilo Notion/Obsidian)
-|       `-- styles.css        # Paleta monocromatica y componentes responsivos
+|       |-- leaflet/          # Activos locales de Leaflet 1.9.4 autoalojados 100% offline
+|       |-- app.js            # Logica de Kanban, mapa interactivo, telemetria, metricas y PIN Argon2id
+|       |-- index.html        # Vista minimalista Notion/Obsidian con 5 vistas y 8 modulos de ajustes
+|       `-- styles.css        # Paleta neutra pizarra, embudo visual, modales y superposicion spotlight
 `-- proxy/
     |-- Dockerfile            # Servidor perimetral Nginx
-    `-- nginx.conf            # Reglas de enrutamiento inverso y seguridad LAN
+    `-- nginx.conf            # Reglas perimetrales, cabeceras de seguridad y limitacion de peticiones
 ```
 
 ## Servicios Orquestados

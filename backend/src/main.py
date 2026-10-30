@@ -21,6 +21,10 @@ from src.api.interactions import router as interactions_router
 from src.api.settings import router as settings_router
 from src.api.dev_reload import router as dev_reload_router, broadcast_reload
 from src.api.pipeline import router as pipeline_router
+from src.api.security import router as security_router
+from src.api.settings_advanced import router as settings_adv_router
+from src.api.geo_map import router as geo_map_router
+from src.api.metrics import router as metrics_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -62,7 +66,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="CRM Engine API",
     description="Backend API for Local Lead Acquisition, Prospecting and CRM",
-    version="5.0.0",
+    version="6.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan
@@ -87,6 +91,10 @@ app.include_router(interactions_router)
 app.include_router(settings_router)
 app.include_router(dev_reload_router)
 app.include_router(pipeline_router)
+app.include_router(security_router)
+app.include_router(settings_adv_router)
+app.include_router(geo_map_router)
+app.include_router(metrics_router)
 
 
 def check_postgres() -> Dict[str, Any]:

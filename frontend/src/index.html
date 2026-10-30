@@ -23,8 +23,11 @@
     }
   </style>
 
+  <!-- Leaflet Local Offline Stylesheet -->
+  <link rel="stylesheet" href="./leaflet/leaflet.css">
+
   <!-- Global Stylesheet with cache-busting -->
-  <link rel="stylesheet" href="./styles.css?v=5.0.0">
+  <link rel="stylesheet" href="./styles.css?v=6.0.0">
 </head>
 <body>
 
@@ -102,6 +105,40 @@
     <symbol id="icon-alert-triangle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/>
     </symbol>
+    <symbol id="icon-map" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" x2="9" y1="3" y2="18"/><line x1="15" x2="15" y1="6" y2="21"/>
+    </symbol>
+    <symbol id="icon-bar-chart-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/>
+    </symbol>
+    <symbol id="icon-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="5 3 19 12 5 21 5 3"/>
+    </symbol>
+    <symbol id="icon-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+    </symbol>
+    <symbol id="icon-square" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect width="18" height="18" x="3" y="3" rx="2"/>
+    </symbol>
+    <symbol id="icon-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>
+    </symbol>
+    <symbol id="icon-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>
+    </symbol>
+    <symbol id="icon-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+    </symbol>
+    <symbol id="icon-help-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" x2="12.01" y1="17" y2="17"/>
+    </symbol>
+    <symbol id="icon-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/>
+    </symbol>
+    <symbol id="icon-database" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/>
+    </symbol>
+  </svg>
   </svg>
 
   <div class="app-container">
@@ -124,12 +161,26 @@
           <span class="nav-badge" id="badge-leads-count">0</span>
         </button>
 
+        <button class="nav-item" id="nav-btn-map" data-view="map">
+          <span class="nav-left">
+            <svg style="width:16px;height:16px;" stroke="currentColor" fill="none"><use href="#icon-map"/></svg>
+            Mapa &amp; Extraccion
+          </span>
+        </button>
+
         <button class="nav-item" id="nav-btn-calendar" data-view="calendar">
           <span class="nav-left">
             <svg style="width:16px;height:16px;" stroke="currentColor" fill="none"><use href="#icon-calendar"/></svg>
             Agenda
           </span>
           <span class="nav-badge" id="badge-events-count" style="display: none;">0</span>
+        </button>
+
+        <button class="nav-item" id="nav-btn-metrics" data-view="metrics">
+          <span class="nav-left">
+            <svg style="width:16px;height:16px;" stroke="currentColor" fill="none"><use href="#icon-bar-chart-2"/></svg>
+            Metricas
+          </span>
         </button>
 
         <button class="nav-item" id="nav-btn-settings" data-view="settings">
@@ -141,6 +192,10 @@
       </nav>
 
       <div class="sidebar-footer">
+        <button class="btn-sidebar-help" id="btn-start-onboarding" title="Recorrido guiado de 6 pasos">
+          <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-help-circle"/></svg>
+          Primeros Pasos
+        </button>
         <div class="live-indicator">
           <span class="live-dot" id="live-reload-dot"></span>
           <span id="live-reload-text">Conectado en vivo</span>
@@ -289,98 +344,615 @@
         </section>
 
         <!-- ========================================== -->
-        <!-- VIEW 3: SETTINGS (AJUSTES)                 -->
+        <!-- VIEW: MAP & EXTRACTION (TIJUANA GEOSPATIAL)-->
         <!-- ========================================== -->
-        <section id="view-settings" class="view-panel" style="display: none;">
-          <div style="display: flex; flex-direction: column; gap: 20px; max-width: 800px;">
-            
-            <!-- WhatsApp Template Settings -->
-            <div class="lead-card">
-              <div class="card-top">
-                <div class="lead-name">Mensaje Predeterminado de WhatsApp</div>
-                <span class="brand-tag">wa.me</span>
+        <section id="view-map" class="view-panel" style="display: none;">
+          <!-- Map & Scraper Controller Header -->
+          <div class="map-controls-panel">
+            <div class="map-controls-row">
+              <div class="map-ctrl-item">
+                <label class="form-label">Zona de Tijuana:</label>
+                <select id="map-zone-select" class="form-select">
+                  <option value="tijuana-full">Tijuana Completa (General)</option>
+                  <option value="zona-rio" selected>Zona Rio (Comercial / Medico)</option>
+                  <option value="centro">Zona Centro</option>
+                  <option value="otay">Mesa de Otay (Industrial)</option>
+                  <option value="la-mesa">La Mesa</option>
+                  <option value="playas">Playas de Tijuana</option>
+                  <option value="chapultepec-hipodromo">Chapultepec / Hipodromo</option>
+                  <option value="el-florido">El Florido</option>
+                  <option value="insurgentes">Insurgentes</option>
+                  <option value="santa-fe">Santa Fe</option>
+                </select>
               </div>
-              <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
-                Texto base que se cargara en WhatsApp al hacer clic en contactar. No realiza auto-envio. Usa la variable <code>{nombre}</code> para insertar el nombre del contacto o empresa.
-              </p>
-              <div class="form-group">
-                <textarea id="settings-whatsapp-template" class="form-textarea" placeholder="Ej: Hola {nombre}, buen dia."></textarea>
+
+              <div class="map-ctrl-item">
+                <label class="form-label">Rubro a Extraer:</label>
+                <select id="map-category-select" class="form-select">
+                  <option value="dentistas">Dentistas / Clinicas Dentales</option>
+                  <option value="despachos-contables">Despachos Contables / Fiscales</option>
+                </select>
               </div>
-              <div class="form-actions" style="margin-top: 12px;">
-                <button class="btn-action" id="btn-save-whatsapp-template">Guardar Plantilla</button>
+
+              <div class="map-ctrl-item">
+                <label class="form-label">Profundidad Quadtree:</label>
+                <select id="map-depth-select" class="form-select">
+                  <option value="1">Nivel 1 (Macro cuadricula)</option>
+                  <option value="2" selected>Nivel 2 (Adaptativa 4 cuadrantes)</option>
+                  <option value="3">Nivel 3 (Detallada 16 cuadrantes)</option>
+                </select>
+              </div>
+
+              <div class="map-ctrl-actions">
+                <button class="btn-action btn-primary" id="map-btn-sweep-start">
+                  <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-play"/></svg>
+                  Iniciar Barrido
+                </button>
+                <button class="btn-action" id="map-btn-sweep-pause" style="display:none;">
+                  <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-pause"/></svg>
+                  Pausar
+                </button>
+                <button class="btn-action" id="map-btn-sweep-resume" style="display:none;">
+                  <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-play"/></svg>
+                  Reanudar
+                </button>
+                <button class="btn-action btn-danger" id="map-btn-sweep-cancel" style="display:none;">
+                  <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-square"/></svg>
+                  Cancelar
+                </button>
               </div>
             </div>
 
-            <!-- LAN and Network Settings -->
-            <div class="lead-card">
-              <div class="card-top">
-                <div class="lead-name">Acceso en Red Local (LAN) y Dispositivos Moviles</div>
-                <span class="brand-tag">Wi-Fi LAN</span>
+            <!-- Real-time Live Scraper Telemetry Bar -->
+            <div class="scraper-telemetry-bar" id="scraper-telemetry-bar">
+              <div class="telemetry-item">
+                <span class="telemetry-label">Estado del Motor:</span>
+                <span class="telemetry-value badge-status" id="telemetry-status">Inactivo</span>
               </div>
-              <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
-                Accede desde cualquier dispositivo en la misma red Wi-Fi sin configurar puertos en el router.
-              </p>
-              <div style="display: flex; flex-direction: column; gap: 8px; font-family: var(--font-mono); font-size: 12px;">
-                <div style="display: flex; justify-content: space-between; padding: 8px; background: var(--bg-app); border-radius: var(--radius-sm); border: 1px solid var(--border);">
-                  <span style="color: var(--text-secondary);">Enlace Local (Esta PC):</span>
-                  <a id="link-local-pc" href="#" target="_blank" style="color: var(--text-main); text-decoration: none;">http://localhost:35058</a>
+              <div class="telemetry-item">
+                <span class="telemetry-label">Fuente Activa:</span>
+                <span class="telemetry-value" id="telemetry-source">OpenStreetMap + Google Maps</span>
+              </div>
+              <div class="telemetry-item">
+                <span class="telemetry-label">Nuevos Extraidos:</span>
+                <span class="telemetry-value" id="telemetry-new-leads" style="color: var(--badge-green-text); font-weight: 600;">0</span>
+              </div>
+              <div class="telemetry-item">
+                <span class="telemetry-label">Duplicados Filtrados:</span>
+                <span class="telemetry-value" id="telemetry-dups" style="color: var(--badge-amber-text);">0</span>
+              </div>
+              <div class="telemetry-progress-box">
+                <div class="telemetry-progress-track">
+                  <div class="telemetry-progress-fill" id="telemetry-progress-bar" style="width: 0%;"></div>
                 </div>
-                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: var(--bg-app); border-radius: var(--radius-sm); border: 1px solid var(--border);">
-                  <span style="color: var(--text-secondary);">Enlace Movil / LAN:</span>
-                  <div style="display: flex; align-items: center; gap: 8px;">
-                    <a id="link-lan-mobile" href="#" target="_blank" style="color: var(--badge-green-text); text-decoration: none; font-weight: 600;">http://192.168.100.96:35058</a>
-                    <button class="btn-icon-only" id="btn-copy-lan-url" title="Copiar enlace LAN" style="width: 24px; height: 24px;">
-                      <svg style="width:12px;height:12px;" stroke="currentColor" fill="none"><use href="#icon-copy"/></svg>
-                    </button>
+                <span class="telemetry-pct" id="telemetry-progress-pct">0%</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Leaflet Interactive Container -->
+          <div class="map-wrapper">
+            <div id="tijuana-map" class="tijuana-map-canvas"></div>
+            <div class="map-legend">
+              <span class="legend-item"><span class="legend-dot" style="background:#81c784;"></span> Probabilidad &gt;= 70%</span>
+              <span class="legend-item"><span class="legend-dot" style="background:#ffb74d;"></span> Probabilidad 40-69%</span>
+              <span class="legend-item"><span class="legend-dot" style="background:#b0bec5;"></span> Probabilidad &lt; 40%</span>
+              <span class="legend-item"><span class="legend-box" style="border:1px dashed #60a5fa;"></span> Cuadrantes Quadtree</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- VIEW: METRICS & CONVERSION ANALYTICS       -->
+        <!-- ========================================== -->
+        <section id="view-metrics" class="view-panel" style="display: none;">
+          <!-- Top KPI Ribbon -->
+          <div class="metrics-kpi-grid">
+            <div class="kpi-card">
+              <div class="kpi-label">Total Prospectos Captados</div>
+              <div class="kpi-value" id="kpi-total-leads">0</div>
+              <div class="kpi-sub">En base local Tijuana</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Contactados Activamente</div>
+              <div class="kpi-value" id="kpi-contacted-leads">0</div>
+              <div class="kpi-sub">Fase 4 a 11</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Cierres Ganados</div>
+              <div class="kpi-value" id="kpi-closed-won" style="color: var(--badge-green-text);">0</div>
+              <div class="kpi-sub">Cerrado - Ganado</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Descartados / Arrepentidos</div>
+              <div class="kpi-value" id="kpi-closed-lost" style="color: var(--badge-amber-text);">0</div>
+              <div class="kpi-sub">Fases 10 y 12</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Calificacion Promedio Exito</div>
+              <div class="kpi-value" id="kpi-avg-score">0%</div>
+              <div class="kpi-sub">Algoritmo predictivo</div>
+            </div>
+          </div>
+
+          <!-- Two-column Analytics Row -->
+          <div class="metrics-split-grid">
+            <!-- Left: Conversion Funnel (12 Stages) -->
+            <div class="lead-card metrics-card">
+              <div class="card-top">
+                <div class="lead-name">Embudo de Conversion Comercial (12 Fases)</div>
+                <span class="brand-tag">Tijuana Funnel</span>
+              </div>
+              <p style="font-size: 11px; color: var(--text-secondary); margin-bottom: 12px;">
+                Porcentaje de retencion y volumen de prospectos por fase secuencial.
+              </p>
+              <div class="funnel-container" id="funnel-container">
+                <!-- Dynamically populated 12 stages with bars -->
+              </div>
+            </div>
+
+            <!-- Right: Objections Breakdown & Loss Analysis -->
+            <div class="lead-card metrics-card">
+              <div class="card-top">
+                <div class="lead-name">Analisis de Objeciones y Descarte</div>
+                <span class="brand-tag">Post-Mortem</span>
+              </div>
+              <div class="objection-section">
+                <div class="objection-title">Retractados / Arrepentimiento (Fase 10):</div>
+                <div id="regret-breakdown-list" class="objection-list">
+                  <div class="empty-state-sm">Sin casos de retractacion registrados.</div>
+                </div>
+              </div>
+
+              <div class="objection-section" style="margin-top: 16px;">
+                <div class="objection-title">Cerrado - Descartado (Fase 12):</div>
+                <div id="loss-breakdown-list" class="objection-list">
+                  <div class="empty-state-sm">Sin descartes comerciales registrados.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Row: Categorias y Zonas -->
+          <div class="metrics-split-grid" style="margin-top: 16px;">
+            <div class="lead-card metrics-card">
+              <div class="card-top">
+                <div class="lead-name">Distribucion por Categoria</div>
+                <span class="brand-tag">Rubros</span>
+              </div>
+              <div id="category-metrics-list" class="distribution-list">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+
+            <div class="lead-card metrics-card">
+              <div class="card-top">
+                <div class="lead-name">Distribucion Geoespacial (Zonas Tijuana)</div>
+                <span class="brand-tag">Geospatial</span>
+              </div>
+              <div id="zone-metrics-list" class="distribution-list">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- VIEW: ADVANCED MODULAR SETTINGS (8 MODULES)-->
+        <!-- ========================================== -->
+        <section id="view-settings" class="view-panel" style="display: none;">
+          <!-- Modular Settings Sub-navigation Bar -->
+          <div class="settings-subnav" id="settings-subnav">
+            <button class="settings-nav-btn active" data-mod="mod-operator">3.1 Operador</button>
+            <button class="settings-nav-btn" data-mod="mod-categories">3.2 Categorias</button>
+            <button class="settings-nav-btn" data-mod="mod-scraper">3.3 Motor Scraper</button>
+            <button class="settings-nav-btn" data-mod="mod-scoring">3.4 Calibracion</button>
+            <button class="settings-nav-btn" data-mod="mod-templates">3.5 Plantillas WA</button>
+            <button class="settings-nav-btn" data-mod="mod-pipeline">3.6 Reglas Pipeline</button>
+            <button class="settings-nav-btn" data-mod="mod-calendar">3.7 Calendario &amp; Gmail</button>
+            <button class="settings-nav-btn" data-mod="mod-security">3.8 Seguridad &amp; Respaldos</button>
+          </div>
+
+          <div class="settings-panels-container">
+            <!-- MODULE 3.1: OPERADOR Y CANALES PROPIOS -->
+            <div class="settings-mod-panel" id="mod-operator">
+              <div class="lead-card">
+                <div class="card-top">
+                  <div class="lead-name">3.1 Perfil del Operador y Canales Propios</div>
+                  <span class="brand-tag">Operador Local</span>
+                </div>
+                <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
+                  Datos de contacto comercial que se utilizan para generar enlaces de contacto salientes.
+                </p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                  <div class="form-group">
+                    <label class="form-label">Nombre Comercial del Operador:</label>
+                    <input type="text" id="settings-op-name" class="form-input" placeholder="Ej: Soluciones Digitales TJ">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Lada Telefonica Predeterminada:</label>
+                    <select id="settings-op-lada" class="form-select">
+                      <option value="+52">+52 (Mexico - Tijuana 664)</option>
+                      <option value="+1">+1 (Estados Unidos / San Diego)</option>
+                    </select>
+                  </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px;">
+                  <div class="form-group">
+                    <label class="form-label">WhatsApp de Contacto:</label>
+                    <input type="text" id="settings-op-phone" class="form-input" placeholder="664 123 4567">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Correo de Respuesta Comercial:</label>
+                    <input type="email" id="settings-op-email" class="form-input" placeholder="prospeccion@tijuana.local">
+                  </div>
+                </div>
+                <div class="form-actions" style="margin-top: 14px;">
+                  <button class="btn-action btn-primary" id="btn-save-operator">Guardar Datos de Operador</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- MODULE 3.2: CATEGORIAS Y PALABRAS CLAVE -->
+            <div class="settings-mod-panel" id="mod-categories" style="display: none;">
+              <div class="lead-card">
+                <div class="card-top">
+                  <div class="lead-name">3.2 Gestor de Categorias y Palabras Clave</div>
+                  <span class="brand-tag">Segmentacion</span>
+                </div>
+                <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
+                  Gestion de rubros comerciales, sinonimos positivos y palabras clave negativas de exclusion.
+                </p>
+                
+                <div style="margin-bottom: 14px;">
+                  <label class="form-label">Categorias Activas en Tijuana:</label>
+                  <div id="settings-categories-list" style="display: flex; flex-direction: column; gap: 8px; margin-top: 6px;">
+                    <!-- Dynamically populated categories -->
+                  </div>
+                </div>
+
+                <div class="form-group" style="margin-top: 14px;">
+                  <label class="form-label">Palabras Clave Negativas de Exclusion (Separadas por coma):</label>
+                  <textarea id="settings-negative-keywords" class="form-textarea" placeholder="empleo, vacante, bolsa de trabajo, cursos, escuela, proveedor"></textarea>
+                  <span style="font-size: 10px; color: var(--text-muted);">Los prospectos con estos terminos se descartaran durante el escaneo.</span>
+                </div>
+                <div class="form-actions" style="margin-top: 12px;">
+                  <button class="btn-action btn-primary" id="btn-save-categories-settings">Guardar Palabras Clave</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- MODULE 3.3: MOTOR SCRAPER -->
+            <div class="settings-mod-panel" id="mod-scraper" style="display: none;">
+              <div class="lead-card">
+                <div class="card-top">
+                  <div class="lead-name">3.3 Motor de Extraccion y Limites de Red</div>
+                  <span class="brand-tag">Concurrencia &amp; Jitter</span>
+                </div>
+                <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
+                  Parametros de ejecucion para operar bajo IP residencial domestica sin bloqueos de red.
+                </p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                  <div class="form-group">
+                    <label class="form-label">Concurrencia de Workers:</label>
+                    <select id="settings-scraper-concurrency" class="form-select">
+                      <option value="1">1 Worker (Bajo impacto)</option>
+                      <option value="2" selected>2 Workers (Recomendado residencial)</option>
+                      <option value="4">4 Workers (Moderado)</option>
+                      <option value="8">8 Workers (Conexion de alta velocidad)</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Profundidad Maxima Quadtree:</label>
+                    <select id="settings-scraper-depth" class="form-select">
+                      <option value="1">Nivel 1</option>
+                      <option value="2">Nivel 2</option>
+                      <option value="3" selected>Nivel 3 (Recomendado)</option>
+                      <option value="4">Nivel 4</option>
+                      <option value="5">Nivel 5 (Ultra granular)</option>
+                    </select>
+                  </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px;">
+                  <div class="form-group">
+                    <label class="form-label">Jitter Minimo (ms):</label>
+                    <input type="number" id="settings-jitter-min" class="form-input" value="1500" step="100">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Jitter Maximo (ms):</label>
+                    <input type="number" id="settings-jitter-max" class="form-input" value="4500" step="100">
+                  </div>
+                </div>
+                <div class="form-group" style="margin-top: 10px;">
+                  <label class="form-label">Servidor Espejo de OpenStreetMap Overpass:</label>
+                  <select id="settings-overpass-mirror" class="form-select">
+                    <option value="https://overpass-api.de/api/interpreter">overpass-api.de (Oficial)</option>
+                    <option value="https://overpass.kumi.systems/api/interpreter" selected>kumi.systems (Alta disponibilidad)</option>
+                    <option value="https://lz4.overpass-api.de/api/interpreter">lz4.overpass-api.de (Rapido)</option>
+                  </select>
+                </div>
+                <div class="form-actions" style="margin-top: 14px;">
+                  <button class="btn-action btn-primary" id="btn-save-scraper">Guardar Ajustes de Extraccion</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- MODULE 3.4: CALIBRACION LEAD SCORING -->
+            <div class="settings-mod-panel" id="mod-scoring" style="display: none;">
+              <div class="lead-card">
+                <div class="card-top">
+                  <div class="lead-name">3.4 Calibracion del Algoritmo de Aceptacion</div>
+                  <span class="brand-tag">Predictivo (0 - 100%)</span>
+                </div>
+                <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
+                  Ponderacion de vulnerabilidades tecnicas en el calculo de probabilidad de aceptacion de propuesta.
+                </p>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                  <div class="scoring-factor-row">
+                    <div class="scoring-label">
+                      <strong>Sin Certificado SSL:</strong>
+                      <span>Ausencia de HTTPS o certificado vencido</span>
+                    </div>
+                    <input type="number" id="weight-ssl" class="form-input weight-input" min="0" max="100" value="25">
+                    <span class="weight-unit">%</span>
+                  </div>
+
+                  <div class="scoring-factor-row">
+                    <div class="scoring-label">
+                      <strong>No Adaptado a Moviles:</strong>
+                      <span>Sin meta viewport o maquetacion responsive</span>
+                    </div>
+                    <input type="number" id="weight-mobile" class="form-input weight-input" min="0" max="100" value="25">
+                    <span class="weight-unit">%</span>
+                  </div>
+
+                  <div class="scoring-factor-row">
+                    <div class="scoring-label">
+                      <strong>Rendimiento Deficiente / Carga Lenta:</strong>
+                      <span>Tiempo de respuesta elevado y recursos pesados</span>
+                    </div>
+                    <input type="number" id="weight-performance" class="form-input weight-input" min="0" max="100" value="20">
+                    <span class="weight-unit">%</span>
+                  </div>
+
+                  <div class="scoring-factor-row">
+                    <div class="scoring-label">
+                      <strong>Sin Pixeles de Rastreo:</strong>
+                      <span>Ausencia de Meta Pixel, Google Analytics o GTM</span>
+                    </div>
+                    <input type="number" id="weight-pixels" class="form-input weight-input" min="0" max="100" value="15">
+                    <span class="weight-unit">%</span>
+                  </div>
+
+                  <div class="scoring-factor-row">
+                    <div class="scoring-label">
+                      <strong>Pocas Reseñas o Reputacion Baja:</strong>
+                      <span>Menos de 10 reseñas o calificacion &lt; 4.0 en Maps</span>
+                    </div>
+                    <input type="number" id="weight-reviews" class="form-input weight-input" min="0" max="100" value="15">
+                    <span class="weight-unit">%</span>
+                  </div>
+                </div>
+
+                <div class="form-actions" style="margin-top: 16px; justify-content: space-between;">
+                  <button class="btn-action btn-primary" id="btn-save-scoring">Guardar Ponderaciones</button>
+                  <button class="btn-action" id="btn-recalibrate-all-scores" title="Aplica nuevos pesos a todos los prospectos en la base de datos">
+                    <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-refresh"/></svg>
+                    Recalcular Masivamente
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- MODULE 3.5: PLANTILLAS Y REDIRECCIONES -->
+            <div class="settings-mod-panel" id="mod-templates" style="display: none;">
+              <div class="lead-card">
+                <div class="card-top">
+                  <div class="lead-name">3.5 Plantillas de Contacto y Redirecciones Universales</div>
+                  <span class="brand-tag">wa.me / tel / mailto</span>
+                </div>
+                <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
+                  Define el texto inicial para WhatsApp. Variables dinamicas soportadas: <code>{nombre}</code>, <code>{rubro}</code>, <code>{falla_principal}</code>.
+                </p>
+                <div class="form-group">
+                  <label class="form-label">Plantilla de Mensaje WhatsApp:</label>
+                  <textarea id="settings-whatsapp-template" class="form-textarea" style="min-height: 80px;" placeholder="Hola {nombre}, te contacto con relacion a mejoras tecnicas para tu negocio de {rubro}..."></textarea>
+                </div>
+
+                <div style="margin-top: 14px;">
+                  <label class="form-label">Canales de Contacto Visibles en Ficha:</label>
+                  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 6px;">
+                    <label class="checkbox-label">
+                      <input type="checkbox" id="channel-toggle-wa" checked> WhatsApp Directo
+                    </label>
+                    <label class="checkbox-label">
+                      <input type="checkbox" id="channel-toggle-tel" checked> Marcacion Telefonica
+                    </label>
+                    <label class="checkbox-label">
+                      <input type="checkbox" id="channel-toggle-mail" checked> Correo Electronico
+                    </label>
+                    <label class="checkbox-label">
+                      <input type="checkbox" id="channel-toggle-social" checked> Redes Sociales Detectadas
+                    </label>
+                  </div>
+                </div>
+
+                <div class="form-actions" style="margin-top: 14px;">
+                  <button class="btn-action btn-primary" id="btn-save-templates">Guardar Plantillas y Canales</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- MODULE 3.6: REGLAS DEL PIPELINE -->
+            <div class="settings-mod-panel" id="mod-pipeline" style="display: none;">
+              <div class="lead-card">
+                <div class="card-top">
+                  <div class="lead-name">3.6 Reglas del Pipeline y Alertas de Estancamiento</div>
+                  <span class="brand-tag">12 Fases Comerciales</span>
+                </div>
+                <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
+                  Configuracion de alertas de vencimiento de seguimiento y reglas de reactivacion.
+                </p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                  <div class="form-group">
+                    <label class="form-label">Umbral de Inactividad (Horas):</label>
+                    <input type="number" id="settings-stagnation-hours" class="form-input" value="48" min="1" max="720">
+                    <span style="font-size: 10px; color: var(--text-muted);">Alerta tras superar este limite sin notas o transiciones.</span>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Alerta Anticipada de Citas (Horas):</label>
+                    <input type="number" id="settings-alert-lead-hours" class="form-input" value="24" min="1" max="168">
+                    <span style="font-size: 10px; color: var(--text-muted);">Aviso en panel antes del inicio de una cita.</span>
+                  </div>
+                </div>
+                <div class="form-actions" style="margin-top: 14px;">
+                  <button class="btn-action btn-primary" id="btn-save-pipeline-rules">Guardar Reglas</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- MODULE 3.7: CALENDARIO Y OAUTH -->
+            <div class="settings-mod-panel" id="mod-calendar" style="display: none;">
+              <div class="lead-card">
+                <div class="card-top">
+                  <div class="lead-name">3.7 Calendario y Sincronizacion Gmail</div>
+                  <span class="brand-tag">OAuth 2.0 Cifrado AES-256</span>
+                </div>
+                <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
+                  Operacion 100% local por defecto. Conecta opcionalmente con Google Calendar mediante OAuth 2.0.
+                </p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                  <div class="form-group">
+                    <label class="form-label">Vista Predeterminada:</label>
+                    <select id="settings-calendar-view" class="form-select">
+                      <option value="agenda" selected>Agenda Cronologica</option>
+                      <option value="week">Semana Comercial</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Duracion Estandar de Cita (Minutos):</label>
+                    <select id="settings-event-duration" class="form-select">
+                      <option value="15">15 minutos</option>
+                      <option value="30">30 minutos</option>
+                      <option value="45" selected>45 minutos</option>
+                      <option value="60">60 minutos</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="form-group" style="margin-top: 12px;">
+                  <label class="form-label">Google Cloud Client ID:</label>
+                  <input type="text" id="oauth-client-id" class="form-input" placeholder="Client ID de Google Cloud Console">
+                </div>
+                <div class="form-group" style="margin-top: 10px;">
+                  <label class="form-label">Google Cloud Client Secret (Se cifra con AES-256-GCM en reposo):</label>
+                  <input type="password" id="oauth-client-secret" class="form-input" placeholder="Client Secret">
+                </div>
+                <div class="form-actions" style="margin-top: 14px;">
+                  <button class="btn-action btn-primary" id="btn-connect-google">Guardar Credenciales y Vincular</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- MODULE 3.8: SEGURIDAD, RESPALDOS Y MANTENIMIENTO -->
+            <div class="settings-mod-panel" id="mod-security" style="display: none;">
+              <!-- LAN Access & Argon2id PIN -->
+              <div class="lead-card">
+                <div class="card-top">
+                  <div class="lead-name">Proteccion de Red Local (PIN Argon2id)</div>
+                  <span class="brand-tag">AppSec</span>
+                </div>
+                <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
+                  Protege el acceso a la plataforma desde dispositivos en la red local Wi-Fi mediante un PIN seguro con hash Argon2id.
+                </p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: flex-end;">
+                  <div class="form-group">
+                    <label class="form-label">Nuevo PIN de Operador (4-12 digitos/letras):</label>
+                    <input type="password" id="settings-new-pin" class="form-input" placeholder="Ingresa PIN seguro">
+                  </div>
+                  <div>
+                    <button class="btn-action" id="btn-set-pin" style="height: 32px;">Establecer PIN</button>
+                  </div>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border);">
+                  <div>
+                    <div style="font-weight: 600; font-size: 12px;">Exigir PIN para desbloquear en red LAN:</div>
+                    <div style="font-size: 11px; color: var(--text-secondary);">Bloquea la sesion en cualquier dispositivo hasta ingresar el PIN.</div>
+                  </div>
+                  <button class="btn-action" id="btn-toggle-protection">Habilitar Bloqueo</button>
+                </div>
+              </div>
+
+              <!-- Database Export / Import Backups -->
+              <div class="lead-card" style="margin-top: 14px;">
+                <div class="card-top">
+                  <div class="lead-name">Respaldos de Base de Datos (Exportar / Importar)</div>
+                  <span class="brand-tag">Backup</span>
+                </div>
+                <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
+                  Descarga una copia completa de prospectos, notas, citas e historial en formato JSON o CSV.
+                </p>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                  <button class="btn-action" id="btn-export-json">
+                    <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-download"/></svg>
+                    Descargar Copia JSON
+                  </button>
+                  <button class="btn-action" id="btn-export-csv">
+                    <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-download"/></svg>
+                    Descargar Copia CSV
+                  </button>
+                  <label class="btn-action" style="cursor: pointer;">
+                    <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-upload"/></svg>
+                    Restaurar Copia JSON
+                    <input type="file" id="input-import-backup" accept=".json,.csv" style="display: none;">
+                  </label>
+                </div>
+              </div>
+
+              <!-- Trash and Maintenance -->
+              <div class="lead-card" style="margin-top: 14px;">
+                <div class="card-top">
+                  <div class="lead-name">Mantenimiento y Reinicio de Fabrica</div>
+                  <span class="brand-tag" style="color: #fca5a5; border-color: rgba(239,68,68,0.4);">Zona Critica</span>
+                </div>
+                <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
+                  Acciones destructivas protegidas por el modal de Doble Confirmacion estricta.
+                </p>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                  <button class="btn-action btn-danger" id="btn-purge-trash-all">
+                    <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-trash-2"/></svg>
+                    Vaciar Papelera Permanentemente
+                  </button>
+                  <button class="btn-action btn-danger" id="btn-factory-reset">
+                    <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-alert-triangle"/></svg>
+                    Reinicio de Fabrica (Factory Reset)
+                  </button>
+                </div>
+              </div>
+
+              <!-- LAN Network Connectivity Info -->
+              <div class="lead-card" style="margin-top: 14px;">
+                <div class="card-top">
+                  <div class="lead-name">Acceso en Red Local (LAN) y Dispositivos Moviles</div>
+                  <span class="brand-tag">Wi-Fi LAN</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 8px; font-family: var(--font-mono); font-size: 12px; margin-top: 8px;">
+                  <div style="display: flex; justify-content: space-between; padding: 8px; background: var(--bg-app); border-radius: var(--radius-sm); border: 1px solid var(--border);">
+                    <span style="color: var(--text-secondary);">Enlace Local (Esta PC):</span>
+                    <a id="link-local-pc" href="#" target="_blank" style="color: var(--text-main); text-decoration: none;">http://localhost:35058</a>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: var(--bg-app); border-radius: var(--radius-sm); border: 1px solid var(--border);">
+                    <span style="color: var(--text-secondary);">Enlace Movil / LAN:</span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <a id="link-lan-mobile" href="#" target="_blank" style="color: var(--badge-green-text); text-decoration: none; font-weight: 600;">http://192.168.100.96:35058</a>
+                      <button class="btn-icon-only" id="btn-copy-lan-url" title="Copiar enlace LAN" style="width: 24px; height: 24px;">
+                        <svg style="width:12px;height:12px;" stroke="currentColor" fill="none"><use href="#icon-copy"/></svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <!-- Google Calendar OAuth Settings -->
-            <div class="lead-card">
-              <div class="card-top">
-                <div class="lead-name">Sincronizacion con Google Calendar (Opcional)</div>
-                <span class="brand-tag">OAuth 2.0</span>
-              </div>
-              <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
-                El sistema opera al 100% de forma local. Si deseas sincronizar tu agenda con Google Calendar, ingresa tus credenciales.
-              </p>
-              <div class="form-group" style="margin-bottom: 10px;">
-                <label class="form-label">Client ID:</label>
-                <input type="text" id="oauth-client-id" class="form-input" placeholder="Ingresa Client ID de Google Cloud">
-              </div>
-              <div class="form-group" style="margin-bottom: 12px;">
-                <label class="form-label">Client Secret:</label>
-                <input type="password" id="oauth-client-secret" class="form-input" placeholder="Ingresa Client Secret de Google Cloud">
-              </div>
-              <div class="form-actions">
-                <button class="btn-action" id="btn-connect-google">Vincular con Google</button>
-              </div>
             </div>
-
-            <!-- Diagnostics -->
-            <div class="lead-card">
-              <div class="card-top">
-                <div class="lead-name">Diagnostico de Modulos y Hot Reload</div>
-                <span class="brand-tag">v5.0.0</span>
-              </div>
-              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 10px;">
-                <div style="background: var(--bg-app); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
-                  <div style="font-size: 11px; color: var(--text-secondary);">Pipeline Comercial</div>
-                  <div style="font-size: 12px; font-weight: 600; color: var(--badge-green-text); margin-top: 4px;">12 Fases Activas</div>
-                </div>
-                <div style="background: var(--bg-app); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
-                  <div style="font-size: 11px; color: var(--text-secondary);">Doble Confirmacion &amp; Papelera</div>
-                  <div style="font-size: 12px; font-weight: 600; color: var(--badge-green-text); margin-top: 4px;">Soft Delete Activo</div>
-                </div>
-                <div style="background: var(--bg-app); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
-                  <div style="font-size: 11px; color: var(--text-secondary);">WebSocket Live Reload</div>
-                  <div style="font-size: 12px; font-weight: 600; color: var(--badge-green-text); margin-top: 4px;" id="diag-ws-status">Conectado</div>
-                </div>
-              </div>
-            </div>
-
           </div>
         </section>
 
@@ -394,9 +966,17 @@
       <svg style="width:18px;height:18px;" stroke="currentColor" fill="none"><use href="#icon-users"/></svg>
       <span>Pipeline</span>
     </button>
+    <button class="mobile-nav-item" data-view="map" id="mob-nav-map">
+      <svg style="width:18px;height:18px;" stroke="currentColor" fill="none"><use href="#icon-map"/></svg>
+      <span>Mapa</span>
+    </button>
     <button class="mobile-nav-item" data-view="calendar" id="mob-nav-calendar">
       <svg style="width:18px;height:18px;" stroke="currentColor" fill="none"><use href="#icon-calendar"/></svg>
       <span>Agenda</span>
+    </button>
+    <button class="mobile-nav-item" data-view="metrics" id="mob-nav-metrics">
+      <svg style="width:18px;height:18px;" stroke="currentColor" fill="none"><use href="#icon-bar-chart-2"/></svg>
+      <span>Metricas</span>
     </button>
     <button class="mobile-nav-item" data-view="settings" id="mob-nav-settings">
       <svg style="width:18px;height:18px;" stroke="currentColor" fill="none"><use href="#icon-settings"/></svg>
@@ -775,6 +1355,47 @@
     </div>
   </div>
 
-  <script src="./app.js?v=5.0.0"></script>
+  <!-- ========================================== -->
+  <!-- SPOTLIGHT ONBOARDING OVERLAY (6 STEPS)     -->
+  <!-- ========================================== -->
+  <div id="spotlight-overlay" class="spotlight-overlay" style="display: none;">
+    <div class="spotlight-mask" id="spotlight-mask"></div>
+    <div class="spotlight-card" id="spotlight-card">
+      <div class="spotlight-step-tag" id="spotlight-step-badge">Paso 1 de 6</div>
+      <h3 class="spotlight-title" id="spotlight-title">Pipeline Comercial (12 Fases)</h3>
+      <p class="spotlight-text" id="spotlight-text">
+        Gestiona y avanza a tus prospectos comerciales arrastrando tarjetas o mediante la seleccion rapida.
+      </p>
+      <div class="spotlight-actions">
+        <button class="btn-action" id="spotlight-btn-skip">Omitir</button>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn-action" id="spotlight-btn-prev" style="display: none;">Anterior</button>
+          <button class="btn-action btn-primary" id="spotlight-btn-next">Siguiente</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- PIN LOCK SCREEN (ARGON2ID LOCAL PROTECTION)-->
+  <!-- ========================================== -->
+  <div id="pin-lock-overlay" class="pin-lock-overlay" style="display: none;">
+    <div class="pin-card">
+      <div class="pin-icon">
+        <svg style="width:28px;height:28px;" stroke="currentColor" fill="none"><use href="#icon-lock"/></svg>
+      </div>
+      <div class="pin-title">CRM Local Bloqueado</div>
+      <p class="pin-subtitle">Ingresa tu PIN de operador para desbloquear la sesion en red local.</p>
+      <form id="form-pin-unlock" style="margin-top: 14px;">
+        <input type="password" id="input-unlock-pin" class="form-input" style="text-align: center; font-size: 18px; letter-spacing: 6px;" maxlength="12" placeholder="••••" required autofocus>
+        <div id="pin-error-msg" style="color: #fca5a5; font-size: 11px; margin-top: 6px; display: none;">PIN incorrecto. Intenta de nuevo.</div>
+        <button type="submit" class="btn-action btn-primary" style="width: 100%; margin-top: 14px; justify-content: center;">Desbloquear</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Local Leaflet and Application Scripts -->
+  <script src="./leaflet/leaflet.js"></script>
+  <script src="./app.js?v=6.0.0"></script>
 </body>
 </html>

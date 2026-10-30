@@ -273,6 +273,16 @@ CREATE TABLE IF NOT EXISTS blacklist_identifiers (
     created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
 
+-- Phase 6 Migrations: Negative keywords and modular system settings
+CREATE TABLE IF NOT EXISTS category_negative_keywords (
+    id SERIAL PRIMARY KEY,
+    category_id UUID NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+    keyword VARCHAR(255) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    CONSTRAINT unique_cat_neg_keyword UNIQUE(category_id, keyword)
+);
+CREATE INDEX IF NOT EXISTS idx_cat_neg_keywords ON category_negative_keywords(category_id);
+
 CREATE INDEX IF NOT EXISTS idx_stage_history_lead ON lead_stage_history(lead_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_lead_notes_lead ON lead_notes(lead_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_blacklist_phone ON blacklist_identifiers(phone_e164);
@@ -379,12 +389,37 @@ def init_database_schema():
                     )
 
             # Seed default system settings
-            cur.execute(
-                """
-                INSERT INTO system_settings (key, value, description)
-                VALUES ('whatsapp_template', 'Hola, buen día.', 'Mensaje inicial predeterminado para WhatsApp')
-                ON CONFLICT (key) DO NOTHING;
-                """
-            )
+            DEFAULT_SETTINGS = [
+                ('whatsapp_template', 'Hola, buen día.', 'Mensaje inicial predeterminado para WhatsApp'),
+                ('operator_name', 'Operador Tijuana', 'Nombre del operador o empresa'),
+                ('operator_whatsapp', '', 'Numero de WhatsApp propio'),
+                ('operator_email', '', 'Correo del operador'),
+                ('operator_country_code', '+52', 'Codigo de pais predeterminado'),
+                ('lan_protection_enabled', 'false', 'Activar bloqueo con PIN en red LAN'),
+                ('lan_access_pin_hash', '', 'Hash Argon2id del PIN de acceso'),
+                ('onboarding_completed', 'false', 'Estado del recorrido guiado de primeros pasos'),
+                ('scraper_concurrency', '5', 'Limite de concurrencia de workers'),
+                ('scraper_jitter_min_ms', '1500', 'Jitter aleatorio minimo en milisegundos'),
+                ('scraper_jitter_max_ms', '4500', 'Jitter aleatorio maximo en milisegundos'),
+                ('scraper_quadtree_max_depth', '3', 'Profundidad maxima de subdivision quadtree'),
+                ('scraper_block_heavy_resources', 'true', 'Bloquear recursos pesados en navegador headless'),
+                ('weight_no_website', '25.0', 'Ponderacion por ausencia total de sitio web'),
+                ('weight_ssl_expired', '15.0', 'Ponderacion por SSL vencido o inexistente'),
+                ('weight_slow_ttfb', '15.0', 'Ponderacion por TTFB lento'),
+                ('threshold_ttfb_ms', '1800', 'Umbral de TTFB lento en milisegundos'),
+                ('weight_no_mobile', '20.0', 'Ponderacion por falta de viewport movil'),
+                ('weight_no_pixels', '15.0', 'Ponderacion por falta de pixeles de conversion'),
+                ('stagnation_threshold_hours', '48', 'Horas sin actividad para alerta de estancamiento'),
+                ('visible_channels', '["whatsapp", "phone", "website", "email", "facebook", "instagram"]', 'Canales visibles en tarjetas')
+            ]
+            for key, val, desc in DEFAULT_SETTINGS:
+                cur.execute(
+                    """
+                    INSERT INTO system_settings (key, value, description)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (key) DO NOTHING;
+                    """,
+                    (key, val, desc)
+                )
 
             logger.info("Initial seed categories and keywords committed.")

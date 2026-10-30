@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 import httpx
 from src.db.connection import get_db_connection, execute_query
+from src.security.encryption import encrypt_token, decrypt_token
 
 logger = logging.getLogger("crm.api.calendar")
 router = APIRouter(prefix="/api/v1/calendar", tags=["Calendar"])
@@ -287,7 +288,10 @@ async def oauth_callback(code: str):
         )
         user_email = user_info_resp.json().get("email", "usuario@gmail.com") if user_info_resp.status_code == 200 else None
 
-    # Store token in database
+        enc_access_token = encrypt_token(access_token)
+        enc_refresh_token = encrypt_token(refresh_token) if refresh_token else None
+
+    # Store encrypted tokens in database at rest
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -301,7 +305,7 @@ async def oauth_callback(code: str):
                     user_email = EXCLUDED.user_email,
                     updated_at = NOW();
                 """,
-                (access_token, refresh_token, expires_at, user_email)
+                (enc_access_token, enc_refresh_token, expires_at, user_email)
             )
 
     return {"status": "SUCCESS", "message": "Google Calendar sincronizado correctamente.", "email": user_email}

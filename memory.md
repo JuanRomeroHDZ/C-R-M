@@ -14,13 +14,16 @@ Documento de referencia para navegacion e indexacion por agentes de inteligencia
 - `memory.md`: Indice conciso de rutas y responsabilidades para agentes de inteligencia artificial, limitado a menos de treinta palabras por entrada.
 - `backend/`: Directorio del servicio backend orientado a alta concurrencia, APIs asincronas con FastAPI y futuros motores de scraping geolocalizado.
 - `backend/Dockerfile`: Definicion de contenedor Docker basado en Python 3.12 Debian Bookworm para ejecutar la aplicacion backend de forma aislada.
-- `backend/requirements.txt`: Lista de dependencias de Python para FastAPI, servidor Uvicorn, controladores asincronos de PostgreSQL, Redis y cliente HTTP.
+- `backend/requirements.txt`: Lista de dependencias de Python para FastAPI, servidor Uvicorn, controladores asincronos de PostgreSQL, Redis, Argon2 y criptografia.
 - `backend/src/`: Codigo fuente del backend que encapsula la logica de negocio, controladores de API y modulos de integracion.
 - `backend/src/main.py`: Punto de entrada FastAPI con ciclo de vida lifespan, routers de categorias, trabajos y prospectos, y endpoints de salud.
 - `backend/src/config.py`: Gestor central de configuraciones y variables de entorno para conexiones a PostgreSQL, Redis, limites de concurrencia y parametros del scraper.
 - `backend/src/db/connection.py`: Proveedor de conexiones seguras y transaccionales hacia PostgreSQL mediante cursores basados en diccionarios para consultas parametrizadas.
 - `backend/src/db/schema.py`: Migraciones DDL para tablas de categorias, palabras clave, etiquetas OSM, trabajos de extraccion, cuadriculas y prospectos, incluyendo semillas iniciales.
 - `backend/src/models/schemas.py`: Esquemas Pydantic para validacion y serializacion de categorias, trabajos de extraccion, telemetria en tiempo real y prospectos capturados.
+- `backend/src/security/`: Paquete de blindaje AppSec con cifrado en reposo, hashing de contraseñas y sanitizacion estricta de entradas.
+- `backend/src/security/encryption.py`: Modulo criptografico con Argon2id para PIN y AES-256-GCM derivado con HKDF-SHA256 para tokens OAuth cifrados en reposo.
+- `backend/src/security/sanitization.py`: Sanitizacion estricta contra inyecciones XSS y HTML, eliminacion de etiquetas script y validacion de esquemas permitidos para redirecciones universales.
 - `backend/src/geo/bounds.py`: Delimitacion perimetral de Tijuana y definicion de coordenadas limite para macro-zonas estrategicas como Zona Rio, Centro y Otay.
 - `backend/src/geo/quadtree.py`: Algoritmo de subdivision adaptativa de cuadriculas espaciales en cuatro sub-cuadrantes al detectar saturacion comercial en celdas.
 - `backend/src/extractors/osm_engine.py`: Sub-motor de extraccion para OpenStreetMap con generador Overpass QL, rotacion de servidores espejo y analisis de etiquetas comerciales.
@@ -30,6 +33,8 @@ Documento de referencia para navegacion e indexacion por agentes de inteligencia
 - `backend/src/analysis/scoring.py`: Algoritmo que calcula el puntaje de salud tecnica web y la probabilidad porcentual de aceptacion de propuestas comerciales generando argumentos estructurados de venta.
 - `backend/src/analysis/config_scoring.py`: Parametros desacoplados con ponderaciones y umbrales numericos para traccion comercial, deficiencias tecnicas, factores de resistencia y calificacion en el pipeline.
 - `backend/src/analysis/pipeline.py`: Orquestador del flujo comercial que audita prospectos, evalua viabilidad y gestiona la transicion automatica entre estados Extraido, Auditado y Calificado.
+- `backend/src/analysis/channel_enricher.py`: Motor de enriquecimiento que extrae enlaces sociales, telefonos y correos desde sitios web reales clasificando disponibilidad de canales sin auto-envio.
+- `backend/src/pipeline/state_machine.py`: Máquina de estados para el pipeline de 12 fases con reglas obligatorias, trazabilidad de permanencia, detección de estancamiento y blindaje ante re-extracción.
 - `backend/src/queue/redis_queue.py`: Gestor de colas en Redis que controla la maquina de estados de trabajos, encolamiento de celdas y pausas en caliente.
 - `backend/src/queue/worker.py`: Trabajador en segundo plano que procesa celdas geograficas, ejecuta extraccion hibrida, particion adaptativa y persistencia con manejo de conflictos.
 - `backend/src/api/categories.py`: Endpoints REST para operaciones CRUD sobre categorias comerciales, bancos de sinonimos y mapeos de etiquetas OpenStreetMap.
@@ -37,23 +42,26 @@ Documento de referencia para navegacion e indexacion por agentes de inteligencia
 - `backend/src/api/leads.py`: Endpoints para consultar y filtrar prospectos capturados con soporte de paginacion, filtros por categoria y exclusion de borrado logico.
 - `backend/src/api/audit.py`: Endpoints REST para ejecutar auditorias tecnicas individuales o por lotes sobre prospectos y consultar diagnosticos detallados de infraestructura web.
 - `backend/src/api/deduplication.py`: Endpoints para detonar la normalizacion y consolidacion multicapa de contactos y consultar el historial cronologico de registros fusionados.
-- `backend/src/verify_extraction.py`: Rutina de verificacion ejecutable para comprobar la extraccion real de prospectos en Zona Rio sin emplear datos simulados.
-- `backend/src/verify_phase3.py`: Script de verificacion integral para comprobar deduplicacion real, auditoria tecnica web en vivo, calculo predictivo de cierre y transicion en pipeline.
-- `backend/src/pipeline/state_machine.py`: Máquina de estados para el pipeline de 12 fases con reglas obligatorias, trazabilidad de permanencia, detección de estancamiento y blindaje ante re-extracción.
-- `backend/src/api/pipeline.py`: Endpoints para el tablero Kanban, cambios de fase validados, historial cronológico, notas de seguimiento, prevención de duplicados y papelera con borrado lógico.
-- `backend/src/verify_phase5.py`: Suite de verificación de la Fase 5 que prueba transiciones obligatorias, alertas de estancamiento, detección de duplicados, papelera y reinicio de historial.
-- `backend/src/analysis/channel_enricher.py`: Motor de enriquecimiento que extrae enlaces sociales, telefonos y correos desde sitios web reales clasificando disponibilidad de canales sin auto-envio.
 - `backend/src/api/interactions.py`: Endpoints para consultar tarjetas de contacto enriquecidas, registrar interacciones con avance de etapa y marcar prospectos sin WhatsApp en un clic.
 - `backend/src/api/calendar.py`: Endpoints REST para agendar citas locales, consultar alertas inminentes y gestionar la integracion opcional con Google Calendar OAuth 2.0.
 - `backend/src/api/settings.py`: Endpoints para consultar y actualizar la plantilla de WhatsApp y leer parametros de red local e IP LAN para dispositivos moviles.
+- `backend/src/api/pipeline.py`: Endpoints para el tablero Kanban, cambios de fase validados, historial cronológico, notas de seguimiento, prevención de duplicados y papelera con borrado lógico.
+- `backend/src/api/security.py`: Endpoints REST para autenticacion por PIN con Argon2id, verificacion de sesion y activacion de proteccion en red local.
+- `backend/src/api/settings_advanced.py`: Endpoints para los ocho modulos de ajustes avanzados, calibracion de pesos predictivos, respaldos descargables y reinicio de fabrica.
+- `backend/src/api/geo_map.py`: Endpoints para catalogo de zonas de Tijuana, marcadores de prospectos con coordenadas reales y ejecucion de barridos espaciales.
+- `backend/src/api/metrics.py`: Endpoints para el embudo de conversion de doce fases, analisis de objeciones comerciales y distribucion por zonas geograficas.
 - `backend/src/api/dev_reload.py`: Endpoint WebSocket para deteccion de cambios y recarga automatica en caliente sincronizada entre navegadores de escritorio y dispositivos moviles.
+- `backend/src/verify_extraction.py`: Rutina de verificacion ejecutable para comprobar la extraccion real de prospectos en Zona Rio sin emplear datos simulados.
+- `backend/src/verify_phase3.py`: Script de verificacion integral para comprobar deduplicacion real, auditoria tecnica web en vivo, calculo predictivo de cierre y transicion en pipeline.
+- `backend/src/verify_phase5.py`: Suite de verificación de la Fase 5 que prueba transiciones obligatorias, alertas de estancamiento, detección de duplicados, papelera y reinicio de historial.
 - `frontend/`: Directorio del servicio web cliente con interfaz responsiva, ligera y estetica minimalista en escala de grises.
 - `frontend/Dockerfile`: Imagen ligera Nginx Alpine encargada de servir los archivos estaticos del frontend con comprobacion de salud integrada.
 - `frontend/nginx.conf`: Configuracion del servidor Nginx local para entregar la aplicacion web estatica con politicas basicas de cache.
 - `frontend/src/`: Codigo fuente del frontend compuesto por estructura HTML, estilos monocromaticos y logica JavaScript del cliente.
-- `frontend/src/index.html`: Estructura HTML con estética Notion y Obsidian, tablero Kanban de 12 fases, tabla compacta, ficha integral, modales obligatorios y doble confirmación.
-- `frontend/src/styles.css`: Hojas de estilo CSS con paleta pizarra neutra, columnas Kanban con desplazamiento fluido, insignias de estancamiento, tabla densa y modales destructivos.
-- `frontend/src/app.js`: Lógica cliente con arrastrar y soltar en Kanban, vista de tabla alternativa, ficha integral con notas e historial, y modales de doble confirmación.
+- `frontend/src/leaflet/`: Activos locales de Leaflet autoalojados para visualizacion cartografica offline de Tijuana sin depender de CDN ni claves de API.
+- `frontend/src/index.html`: Estructura HTML con mapa de Tijuana, metricas de embudo, ajustes modulares en ocho secciones, recorrido guiado y bloqueo PIN.
+- `frontend/src/styles.css`: Estilos CSS minimalistas para contenedor cartografico Leaflet, barras visuales de conversion, modulos de configuracion y superposicion spotlight.
+- `frontend/src/app.js`: Logica cliente para mapa de Tijuana, telemetria de escaneo, analitica comercial, ajustes modulares, recorrido spotlight y verificacion Argon2id.
 - `proxy/`: Directorio del proxy perimetral de enrutamiento inverso y aislamiento de seguridad de la red interna de contenedores.
 - `proxy/Dockerfile`: Contenedor Nginx Alpine optimizado para gestionar el trafico perimetral y transferir solicitudes entre el host y servicios.
-- `proxy/nginx.conf`: Reglas de enrutamiento que redirigen /api y /health al backend y el trafico raiz al frontend.
+- `proxy/nginx.conf`: Reglas perimetrales con limitacion de tasa de peticiones, cabeceras estrictas de seguridad HTTP y enrutamiento inverso.

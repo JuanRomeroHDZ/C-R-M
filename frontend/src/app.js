@@ -14,13 +14,21 @@ document.addEventListener('DOMContentLoaded', () => {
     trashLeads: [],
     activeCategory: '',
     searchQuery: '',
-    currentView: 'leads',       // 'leads', 'calendar', 'settings'
+    currentView: 'leads',       // 'leads', 'map', 'calendar', 'metrics', 'settings'
     leadViewMode: 'kanban',     // 'kanban', 'table', 'trash'
     activeMobileStage: 'EXTRACTED',
     selectedLead: null,
     draggedLeadId: null,
     pendingStageTransition: null,
     pendingDestructiveAction: null,
+    activeMapZone: 'zona-rio',
+    activeMapCategory: 'dentistas',
+    mapInstance: null,
+    mapMarkersLayer: null,
+    mapPolygonsLayer: null,
+    activeSweepJobId: null,
+    sweepPollInterval: null,
+    onboardingStep: 1,
     settings: {
       whatsapp_template: 'Hola, buen dia.',
       lan_ip: window.location.hostname,
@@ -33,10 +41,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // DOM Elements - Shell & Nav
   const pageTitle = document.getElementById('page-title');
   const navBtnLeads = document.getElementById('nav-btn-leads');
+  const navBtnMap = document.getElementById('nav-btn-map');
   const navBtnCalendar = document.getElementById('nav-btn-calendar');
+  const navBtnMetrics = document.getElementById('nav-btn-metrics');
   const navBtnSettings = document.getElementById('nav-btn-settings');
   const mobNavLeads = document.getElementById('mob-nav-leads');
+  const mobNavMap = document.getElementById('mob-nav-map');
   const mobNavCalendar = document.getElementById('mob-nav-calendar');
+  const mobNavMetrics = document.getElementById('mob-nav-metrics');
   const mobNavSettings = document.getElementById('mob-nav-settings');
   const badgeLeadsCount = document.getElementById('badge-leads-count');
   const badgeEventsCount = document.getElementById('badge-events-count');
@@ -44,10 +56,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const liveReloadText = document.getElementById('live-reload-text');
   const diagWsStatus = document.getElementById('diag-ws-status');
   const sidebarLanLabel = document.getElementById('sidebar-lan-label');
+  const btnStartOnboarding = document.getElementById('btn-start-onboarding');
 
   // DOM Elements - Views
   const viewLeads = document.getElementById('view-leads');
+  const viewMap = document.getElementById('view-map');
   const viewCalendar = document.getElementById('view-calendar');
+  const viewMetrics = document.getElementById('view-metrics');
   const viewSettings = document.getElementById('view-settings');
 
   // Controls & Filters
@@ -1349,30 +1364,42 @@ document.addEventListener('DOMContentLoaded', () => {
   function switchView(viewName) {
     state.currentView = viewName;
     if (viewLeads) viewLeads.style.display = viewName === 'leads' ? 'block' : 'none';
+    if (viewMap) viewMap.style.display = viewName === 'map' ? 'block' : 'none';
     if (viewCalendar) viewCalendar.style.display = viewName === 'calendar' ? 'flex' : 'none';
+    if (viewMetrics) viewMetrics.style.display = viewName === 'metrics' ? 'block' : 'none';
     if (viewSettings) viewSettings.style.display = viewName === 'settings' ? 'block' : 'none';
 
-    [navBtnLeads, navBtnCalendar, navBtnSettings].forEach(btn => {
+    [navBtnLeads, navBtnMap, navBtnCalendar, navBtnMetrics, navBtnSettings].forEach(btn => {
       if (btn) btn.classList.toggle('active', btn.dataset.view === viewName);
     });
-    [mobNavLeads, mobNavCalendar, mobNavSettings].forEach(btn => {
+    [mobNavLeads, mobNavMap, mobNavCalendar, mobNavMetrics, mobNavSettings].forEach(btn => {
       if (btn) btn.classList.toggle('active', btn.dataset.view === viewName);
     });
 
     if (pageTitle) {
       if (viewName === 'leads') pageTitle.textContent = 'Pipeline Comercial (12 Fases)';
+      else if (viewName === 'map') pageTitle.textContent = 'Mapa de Extraccion Geolocalizado (Tijuana, BC)';
       else if (viewName === 'calendar') pageTitle.textContent = 'Agenda de Citas y Seguimientos';
-      else if (viewName === 'settings') pageTitle.textContent = 'Configuracion de Canales y Red';
+      else if (viewName === 'metrics') pageTitle.textContent = 'Panel de Metricas & Embudo de Conversion';
+      else if (viewName === 'settings') pageTitle.textContent = 'Ajustes Modulares del Sistema';
     }
 
-    if (viewName === 'calendar') {
+    if (viewName === 'map') {
+      setTimeout(() => initTijuanaMap(), 50);
+    } else if (viewName === 'calendar') {
       loadCalendarEvents();
       loadAlerts();
+    } else if (viewName === 'metrics') {
+      loadMetricsDashboard();
+    } else if (viewName === 'settings') {
+      loadAllSettings();
     }
   }
 
   [navBtnLeads, mobNavLeads].forEach(el => el && el.addEventListener('click', () => switchView('leads')));
+  [navBtnMap, mobNavMap].forEach(el => el && el.addEventListener('click', () => switchView('map')));
   [navBtnCalendar, mobNavCalendar].forEach(el => el && el.addEventListener('click', () => switchView('calendar')));
+  [navBtnMetrics, mobNavMetrics].forEach(el => el && el.addEventListener('click', () => switchView('metrics')));
   [navBtnSettings, mobNavSettings].forEach(el => el && el.addEventListener('click', () => switchView('settings')));
 
   // Toggle Kanban vs Table
@@ -1570,25 +1597,952 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Settings Save
-  if (btnSaveWhatsappTemplate) {
-    btnSaveWhatsappTemplate.addEventListener('click', async () => {
-      const text = settingsWhatsappTemplate.value.trim();
+  // ============================================================================
+  // 11. FASE 6: MAPA INTERACTIVO & MOTOR DE BARRIDO GEOLOCALIZADO (TIJUANA)
+  // ============================================================================
+  const mapZoneSelect = document.getElementById('map-zone-select');
+  const mapCategorySelect = document.getElementById('map-category-select');
+  const mapDepthSelect = document.getElementById('map-depth-select');
+  const mapBtnSweepStart = document.getElementById('map-btn-sweep-start');
+  const mapBtnSweepPause = document.getElementById('map-btn-sweep-pause');
+  const mapBtnSweepResume = document.getElementById('map-btn-sweep-resume');
+  const mapBtnSweepCancel = document.getElementById('map-btn-sweep-cancel');
+  const telemetryStatus = document.getElementById('telemetry-status');
+  const telemetrySource = document.getElementById('telemetry-source');
+  const telemetryNewLeads = document.getElementById('telemetry-new-leads');
+  const telemetryDups = document.getElementById('telemetry-dups');
+  const telemetryProgressBar = document.getElementById('telemetry-progress-bar');
+  const telemetryProgressPct = document.getElementById('telemetry-progress-pct');
+
+  function initTijuanaMap() {
+    if (typeof L === 'undefined') {
+      console.warn('[Map] Leaflet no cargado aun.');
+      return;
+    }
+    const mapEl = document.getElementById('tijuana-map');
+    if (!mapEl) return;
+
+    if (!state.mapInstance) {
+      // Default view centered on Tijuana
+      state.mapInstance = L.map('tijuana-map', {
+        zoomControl: true
+      }).setView([32.527, -117.022], 13);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap'
+      }).addTo(state.mapInstance);
+
+      state.mapPolygonsLayer = L.layerGroup().addTo(state.mapInstance);
+      state.mapMarkersLayer = L.layerGroup().addTo(state.mapInstance);
+    } else {
+      state.mapInstance.invalidateSize();
+    }
+
+    loadMapZones();
+    loadMapMarkers();
+  }
+
+  async function loadMapZones() {
+    try {
+      const res = await fetch('/api/v1/geo/zones');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!state.mapPolygonsLayer) return;
+      state.mapPolygonsLayer.clearLayers();
+
+      data.zones.forEach(zone => {
+        if (zone.slug === 'tijuana-full') return;
+        const bbox = zone.bbox;
+        const bounds = [[bbox.min_lat, bbox.min_lon], [bbox.max_lat, bbox.max_lon]];
+        const rect = L.rectangle(bounds, {
+          color: '#60a5fa',
+          weight: 1,
+          dashArray: '4, 4',
+          fillColor: '#3b82f6',
+          fillOpacity: 0.04
+        });
+        rect.bindTooltip(zone.name, { permanent: false, direction: 'center' });
+        state.mapPolygonsLayer.addLayer(rect);
+      });
+    } catch (e) {
+      console.error('[Map] Error al cargar zonas:', e);
+    }
+  }
+
+  async function loadMapMarkers() {
+    try {
+      const res = await fetch('/api/v1/geo/leads-markers');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!state.mapMarkersLayer) return;
+      state.mapMarkersLayer.clearLayers();
+
+      data.markers.forEach(lead => {
+        if (!lead.lat || !lead.lon) return;
+
+        // Color coding by score
+        let color = '#b0bec5';
+        if (lead.score >= 70) color = '#81c784';
+        else if (lead.score >= 40) color = '#ffb74d';
+
+        const marker = L.circleMarker([lead.lat, lead.lon], {
+          radius: 7,
+          fillColor: color,
+          color: '#1a1a1a',
+          weight: 2,
+          opacity: 1,
+          fillOpacity: 0.9
+        });
+
+        const popupContent = `
+          <div class="map-popup-title">${escapeHtml(lead.name)}</div>
+          <div class="map-popup-meta">${escapeHtml(lead.category)} &bull; Fase: ${escapeHtml(lead.stage)}</div>
+          <div>Probabilidad de Exito: <span class="map-popup-score">${lead.score}%</span></div>
+          ${lead.whatsapp_url ? `<a href="${lead.whatsapp_url}" target="_blank" class="map-popup-btn">Contactar WhatsApp</a>` : ''}
+        `;
+
+        marker.bindPopup(popupContent);
+        state.mapMarkersLayer.addLayer(marker);
+      });
+    } catch (e) {
+      console.error('[Map] Error al cargar marcadores:', e);
+    }
+  }
+
+  if (mapZoneSelect) {
+    mapZoneSelect.addEventListener('change', async (e) => {
+      const slug = e.target.value;
+      state.activeMapZone = slug;
       try {
-        btnSaveWhatsappTemplate.textContent = 'Guardando...';
-        const res = await fetch('/api/v1/settings', {
+        const res = await fetch('/api/v1/geo/zones');
+        if (!res.ok) return;
+        const data = await res.json();
+        const found = data.zones.find(z => z.slug === slug);
+        if (found && state.mapInstance) {
+          state.mapInstance.flyTo([found.center.lat, found.center.lon], slug === 'tijuana-full' ? 12 : 14);
+        }
+      } catch (err) {
+        console.error('[Map] Error zona cambio:', err);
+      }
+    });
+  }
+
+  if (mapBtnSweepStart) {
+    mapBtnSweepStart.addEventListener('click', async () => {
+      const zone = mapZoneSelect ? mapZoneSelect.value : 'zona-rio';
+      const category = mapCategorySelect ? mapCategorySelect.value : 'dentistas';
+      const depth = mapDepthSelect ? parseInt(mapDepthSelect.value, 10) : 2;
+
+      mapBtnSweepStart.style.display = 'none';
+      if (mapBtnSweepPause) mapBtnSweepPause.style.display = 'inline-flex';
+      if (mapBtnSweepCancel) mapBtnSweepCancel.style.display = 'inline-flex';
+
+      if (telemetryStatus) {
+        telemetryStatus.textContent = 'Ejecutando';
+        telemetryStatus.style.color = '#81c784';
+      }
+      if (telemetrySource) telemetrySource.textContent = 'OpenStreetMap Overpass + Google Maps';
+
+      try {
+        const res = await fetch('/api/v1/geo/sweep', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ whatsapp_template: text })
+          body: JSON.stringify({
+            zone_slug: zone,
+            category_slug: category,
+            max_depth: depth
+          })
         });
         if (res.ok) {
-          state.settings.whatsapp_template = text;
-          btnSaveWhatsappTemplate.textContent = 'Guardado';
-          setTimeout(() => btnSaveWhatsappTemplate.textContent = 'Guardar Plantilla', 1500);
+          const data = await res.json();
+          state.activeSweepJobId = data.job_id;
+          startPollingSweepJob();
+        }
+      } catch (err) {
+        console.error('[Sweep] Error inicio:', err);
+      }
+    });
+  }
+
+  if (mapBtnSweepPause) {
+    mapBtnSweepPause.addEventListener('click', () => {
+      if (telemetryStatus) {
+        telemetryStatus.textContent = 'Pausado';
+        telemetryStatus.style.color = '#ffb74d';
+      }
+      mapBtnSweepPause.style.display = 'none';
+      if (mapBtnSweepResume) mapBtnSweepResume.style.display = 'inline-flex';
+    });
+  }
+
+  if (mapBtnSweepResume) {
+    mapBtnSweepResume.addEventListener('click', () => {
+      if (telemetryStatus) {
+        telemetryStatus.textContent = 'Ejecutando';
+        telemetryStatus.style.color = '#81c784';
+      }
+      mapBtnSweepResume.style.display = 'none';
+      if (mapBtnSweepPause) mapBtnSweepPause.style.display = 'inline-flex';
+    });
+  }
+
+  if (mapBtnSweepCancel) {
+    mapBtnSweepCancel.addEventListener('click', () => {
+      resetSweepControls();
+      if (telemetryStatus) {
+        telemetryStatus.textContent = 'Cancelado';
+        telemetryStatus.style.color = '#fca5a5';
+      }
+    });
+  }
+
+  function resetSweepControls() {
+    if (state.sweepPollInterval) {
+      clearInterval(state.sweepPollInterval);
+      state.sweepPollInterval = null;
+    }
+    if (mapBtnSweepStart) mapBtnSweepStart.style.display = 'inline-flex';
+    if (mapBtnSweepPause) mapBtnSweepPause.style.display = 'none';
+    if (mapBtnSweepResume) mapBtnSweepResume.style.display = 'none';
+    if (mapBtnSweepCancel) mapBtnSweepCancel.style.display = 'none';
+  }
+
+  function startPollingSweepJob() {
+    if (state.sweepPollInterval) clearInterval(state.sweepPollInterval);
+    state.sweepPollInterval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/v1/geo/jobs/active');
+        if (!res.ok) return;
+        const job = await res.json();
+
+        if (telemetryNewLeads) telemetryNewLeads.textContent = job.new_leads_found || 0;
+        if (telemetryDups) telemetryDups.textContent = job.duplicates_filtered || 0;
+        if (telemetryProgressBar) telemetryProgressBar.style.width = `${job.progress_pct || 0}%`;
+        if (telemetryProgressPct) telemetryProgressPct.textContent = `${job.progress_pct || 0}%`;
+
+        if (job.status === 'COMPLETED' || job.status === 'IDLE' || job.progress_pct >= 100) {
+          resetSweepControls();
+          if (telemetryStatus) {
+            telemetryStatus.textContent = 'Completado';
+            telemetryStatus.style.color = '#81c784';
+          }
+          loadMapMarkers();
           loadPipelineBoard();
         }
       } catch (e) {
-        btnSaveWhatsappTemplate.textContent = 'Error al guardar';
+        console.error('[Sweep] Error polling:', e);
+      }
+    }, 1500);
+  }
+
+  // ============================================================================
+  // 12. FASE 6: PANEL DE METRICAS Y ANALITICA COMERCIAL
+  // ============================================================================
+  const kpiTotalLeads = document.getElementById('kpi-total-leads');
+  const kpiContactedLeads = document.getElementById('kpi-contacted-leads');
+  const kpiClosedWon = document.getElementById('kpi-closed-won');
+  const kpiClosedLost = document.getElementById('kpi-closed-lost');
+  const kpiAvgScore = document.getElementById('kpi-avg-score');
+  const funnelContainer = document.getElementById('funnel-container');
+  const regretBreakdownList = document.getElementById('regret-breakdown-list');
+  const lossBreakdownList = document.getElementById('loss-breakdown-list');
+  const categoryMetricsList = document.getElementById('category-metrics-list');
+  const zoneMetricsList = document.getElementById('zone-metrics-list');
+
+  async function loadMetricsDashboard() {
+    try {
+      const res = await fetch('/api/v1/metrics/dashboard');
+      if (!res.ok) return;
+      const data = await res.json();
+
+      // 1. KPIs
+      if (kpiTotalLeads) kpiTotalLeads.textContent = data.kpis.total_leads;
+      if (kpiContactedLeads) kpiContactedLeads.textContent = data.kpis.contacted_leads;
+      if (kpiClosedWon) kpiClosedWon.textContent = data.kpis.closed_won;
+      if (kpiClosedLost) kpiClosedLost.textContent = data.kpis.closed_lost;
+      if (kpiAvgScore) kpiAvgScore.textContent = `${data.kpis.overall_avg_score}%`;
+
+      // 2. Conversion Funnel
+      if (funnelContainer) {
+        funnelContainer.innerHTML = '';
+        data.funnel.forEach(step => {
+          const row = document.createElement('div');
+          let specialClass = '';
+          if (step.slug === 'CLOSED_WON') specialClass = 'won';
+          if (step.slug === 'CLOSED_LOST' || step.slug === 'REGRETTED') specialClass = 'lost';
+          row.className = `funnel-row ${specialClass}`;
+
+          const pct = Math.max(step.pct_of_total, step.count > 0 ? 5 : 0);
+          row.innerHTML = `
+            <div class="funnel-stage-name" title="${escapeHtml(step.name)}">${step.step}. ${escapeHtml(step.name)}</div>
+            <div class="funnel-bar-wrapper">
+              <div class="funnel-bar-fill" style="width: ${pct}%;"></div>
+              <div class="funnel-bar-meta">${step.count} (${step.pct_of_total}%)</div>
+            </div>
+          `;
+          funnelContainer.appendChild(row);
+        });
+      }
+
+      // 3. Regret & Loss Breakdown
+      if (regretBreakdownList) {
+        if (!data.regret_breakdown || data.regret_breakdown.length === 0) {
+          regretBreakdownList.innerHTML = '<div class="empty-state-sm">Sin casos de retractacion registrados.</div>';
+        } else {
+          regretBreakdownList.innerHTML = data.regret_breakdown.map(r => `
+            <div class="objection-item">
+              <span>${escapeHtml(r.reason)}</span>
+              <strong style="font-family: var(--font-mono);">${r.count}</strong>
+            </div>
+          `).join('');
+        }
+      }
+
+      if (lossBreakdownList) {
+        if (!data.loss_breakdown || data.loss_breakdown.length === 0) {
+          lossBreakdownList.innerHTML = '<div class="empty-state-sm">Sin descartes comerciales registrados.</div>';
+        } else {
+          lossBreakdownList.innerHTML = data.loss_breakdown.map(l => `
+            <div class="objection-item">
+              <span>${escapeHtml(l.reason)}</span>
+              <strong style="font-family: var(--font-mono);">${l.count}</strong>
+            </div>
+          `).join('');
+        }
+      }
+
+      // 4. Category Distribution
+      if (categoryMetricsList) {
+        categoryMetricsList.innerHTML = data.category_distribution.map(c => `
+          <div class="distribution-item">
+            <div>
+              <strong style="color: var(--text-main);">${escapeHtml(c.category_slug)}</strong>
+              <div style="font-size: 10px; color: var(--text-muted);">Score promedio: ${c.avg_score}%</div>
+            </div>
+            <div style="font-family: var(--font-mono); font-weight: 700;">${c.count} prospectos</div>
+          </div>
+        `).join('');
+      }
+
+      // 5. Zone Distribution
+      if (zoneMetricsList) {
+        zoneMetricsList.innerHTML = data.zone_distribution.map(z => `
+          <div class="distribution-item">
+            <span style="color: var(--text-main); font-weight: 500;">${escapeHtml(z.zone)}</span>
+            <span style="font-family: var(--font-mono); font-weight: 600;">${z.count}</span>
+          </div>
+        `).join('');
+      }
+    } catch (e) {
+      console.error('[Metrics] Error al cargar metricas:', e);
+    }
+  }
+
+  // ============================================================================
+  // 13. FASE 6: PANEL DE AJUSTES MODULAR AVANZADO (8 MODULOS)
+  // ============================================================================
+  const settingsNavBtns = document.querySelectorAll('.settings-nav-btn');
+  const settingsModPanels = document.querySelectorAll('.settings-mod-panel');
+
+  settingsNavBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetMod = btn.dataset.mod;
+      settingsNavBtns.forEach(b => b.classList.toggle('active', b === btn));
+      settingsModPanels.forEach(p => {
+        p.style.display = p.id === targetMod ? 'block' : 'none';
+      });
+    });
+  });
+
+  async function loadAllSettings() {
+    try {
+      const res = await fetch('/api/v1/settings/all');
+      if (!res.ok) return;
+      const data = await res.json();
+
+      // 3.1 Operator
+      const op = data.operator || {};
+      const elOpName = document.getElementById('settings-op-name');
+      const elOpLada = document.getElementById('settings-op-lada');
+      const elOpPhone = document.getElementById('settings-op-phone');
+      const elOpEmail = document.getElementById('settings-op-email');
+      if (elOpName) elOpName.value = op.commercial_name || '';
+      if (elOpLada) elOpLada.value = op.default_country_code || '+52';
+      if (elOpPhone) elOpPhone.value = op.whatsapp_number || '';
+      if (elOpEmail) elOpEmail.value = op.response_email || '';
+
+      // 3.2 Categories & Negative Keywords
+      const elNeg = document.getElementById('settings-negative-keywords');
+      const catListEl = document.getElementById('settings-categories-list');
+      if (elNeg) {
+        elNeg.value = (data.scraper.negative_keywords || []).join(', ');
+      }
+      if (catListEl) {
+        catListEl.innerHTML = `
+          <div style="background: var(--bg-app); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; font-size: 11px;">
+            <strong>Dentistas / Clinicas Dentales</strong>
+            <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">OSM: amenity=dentist, healthcare=dentist &bull; Slug: dentistas</div>
+          </div>
+          <div style="background: var(--bg-app); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; font-size: 11px;">
+            <strong>Despachos Contables / Fiscales</strong>
+            <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">OSM: office=accountant, office=tax_advisor &bull; Slug: despachos-contables</div>
+          </div>
+        `;
+      }
+
+      // 3.3 Scraper
+      const sc = data.scraper || {};
+      const elConc = document.getElementById('settings-scraper-concurrency');
+      const elDepth = document.getElementById('settings-scraper-depth');
+      const elJitMin = document.getElementById('settings-jitter-min');
+      const elJitMax = document.getElementById('settings-jitter-max');
+      const elMirror = document.getElementById('settings-overpass-mirror');
+      if (elConc) elConc.value = sc.concurrency_workers || 2;
+      if (elDepth) elDepth.value = sc.max_quadtree_depth || 3;
+      if (elJitMin) elJitMin.value = sc.jitter_min_ms || 1500;
+      if (elJitMax) elJitMax.value = sc.jitter_max_ms || 4500;
+      if (elMirror && sc.overpass_mirror_url) elMirror.value = sc.overpass_mirror_url;
+
+      // 3.4 Scoring
+      const sco = data.scoring || {};
+      const elSsl = document.getElementById('weight-ssl');
+      const elMob = document.getElementById('weight-mobile');
+      const elPerf = document.getElementById('weight-performance');
+      const elPix = document.getElementById('weight-pixels');
+      const elRev = document.getElementById('weight-reviews');
+      if (elSsl) elSsl.value = sco.weight_ssl ?? 25;
+      if (elMob) elMob.value = sco.weight_mobile ?? 25;
+      if (elPerf) elPerf.value = sco.weight_performance ?? 20;
+      if (elPix) elPix.value = sco.weight_pixels ?? 15;
+      if (elRev) elRev.value = sco.weight_reviews ?? 15;
+
+      // 3.5 Templates
+      const tmpl = data.templates || {};
+      const elWaTmpl = document.getElementById('settings-whatsapp-template');
+      if (elWaTmpl && tmpl.whatsapp_template) elWaTmpl.value = tmpl.whatsapp_template;
+
+      // 3.6 Pipeline Rules
+      const pipe = data.pipeline || {};
+      const elStag = document.getElementById('settings-stagnation-hours');
+      const elAlert = document.getElementById('settings-alert-lead-hours');
+      if (elStag) elStag.value = pipe.stagnation_threshold_hours || 48;
+      if (elAlert) elAlert.value = pipe.alert_lead_hours || 24;
+
+      // 3.7 Calendar
+      const cal = data.calendar || {};
+      const elCalView = document.getElementById('settings-calendar-view');
+      const elCalDur = document.getElementById('settings-event-duration');
+      const elOauthId = document.getElementById('oauth-client-id');
+      if (elCalView) elCalView.value = cal.default_view || 'agenda';
+      if (elCalDur) elCalDur.value = cal.standard_meeting_duration_minutes || 45;
+      if (elOauthId && cal.google_client_id) elOauthId.value = cal.google_client_id;
+
+      // 3.8 Security & Protection Status
+      const sec = data.security || {};
+      const btnProt = document.getElementById('btn-toggle-protection');
+      if (btnProt) {
+        btnProt.textContent = sec.protection_enabled ? 'Deshabilitar Bloqueo' : 'Habilitar Bloqueo';
+        btnProt.classList.toggle('btn-danger', sec.protection_enabled);
+      }
+    } catch (e) {
+      console.error('[SettingsAll] Error al cargar:', e);
+    }
+  }
+
+  // Save 3.1 Operator
+  const btnSaveOperator = document.getElementById('btn-save-operator');
+  if (btnSaveOperator) {
+    btnSaveOperator.addEventListener('click', async () => {
+      const payload = {
+        commercial_name: document.getElementById('settings-op-name')?.value || '',
+        default_country_code: document.getElementById('settings-op-lada')?.value || '+52',
+        whatsapp_number: document.getElementById('settings-op-phone')?.value || '',
+        response_email: document.getElementById('settings-op-email')?.value || ''
+      };
+      try {
+        btnSaveOperator.textContent = 'Guardando...';
+        const res = await fetch('/api/v1/settings/operator', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          btnSaveOperator.textContent = 'Guardado';
+          setTimeout(() => btnSaveOperator.textContent = 'Guardar Datos de Operador', 1500);
+        }
+      } catch (e) {
+        btnSaveOperator.textContent = 'Error';
+      }
+    });
+  }
+
+  // Save 3.2 Categories & Negative Keywords
+  const btnSaveCategoriesSettings = document.getElementById('btn-save-categories-settings');
+  if (btnSaveCategoriesSettings) {
+    btnSaveCategoriesSettings.addEventListener('click', async () => {
+      const raw = document.getElementById('settings-negative-keywords')?.value || '';
+      const keywords = raw.split(',').map(k => k.trim()).filter(Boolean);
+      try {
+        btnSaveCategoriesSettings.textContent = 'Guardando...';
+        const res = await fetch('/api/v1/settings/scraper', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ negative_keywords: keywords })
+        });
+        if (res.ok) {
+          btnSaveCategoriesSettings.textContent = 'Guardado';
+          setTimeout(() => btnSaveCategoriesSettings.textContent = 'Guardar Palabras Clave', 1500);
+        }
+      } catch (e) {
+        btnSaveCategoriesSettings.textContent = 'Error';
+      }
+    });
+  }
+
+  // Save 3.3 Scraper
+  const btnSaveScraper = document.getElementById('btn-save-scraper');
+  if (btnSaveScraper) {
+    btnSaveScraper.addEventListener('click', async () => {
+      const payload = {
+        concurrency_workers: parseInt(document.getElementById('settings-scraper-concurrency')?.value || 2, 10),
+        max_quadtree_depth: parseInt(document.getElementById('settings-scraper-depth')?.value || 3, 10),
+        jitter_min_ms: parseInt(document.getElementById('settings-jitter-min')?.value || 1500, 10),
+        jitter_max_ms: parseInt(document.getElementById('settings-jitter-max')?.value || 4500, 10),
+        overpass_mirror_url: document.getElementById('settings-overpass-mirror')?.value || ''
+      };
+      try {
+        btnSaveScraper.textContent = 'Guardando...';
+        const res = await fetch('/api/v1/settings/scraper', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          btnSaveScraper.textContent = 'Guardado';
+          setTimeout(() => btnSaveScraper.textContent = 'Guardar Ajustes de Extraccion', 1500);
+        }
+      } catch (e) {
+        btnSaveScraper.textContent = 'Error';
+      }
+    });
+  }
+
+  // Save 3.4 Scoring
+  const btnSaveScoring = document.getElementById('btn-save-scoring');
+  if (btnSaveScoring) {
+    btnSaveScoring.addEventListener('click', async () => {
+      const payload = {
+        weight_ssl: parseFloat(document.getElementById('weight-ssl')?.value || 25),
+        weight_mobile: parseFloat(document.getElementById('weight-mobile')?.value || 25),
+        weight_performance: parseFloat(document.getElementById('weight-performance')?.value || 20),
+        weight_pixels: parseFloat(document.getElementById('weight-pixels')?.value || 15),
+        weight_reviews: parseFloat(document.getElementById('weight-reviews')?.value || 15)
+      };
+      try {
+        btnSaveScoring.textContent = 'Guardando...';
+        const res = await fetch('/api/v1/settings/scoring', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          btnSaveScoring.textContent = 'Guardado';
+          setTimeout(() => btnSaveScoring.textContent = 'Guardar Ponderaciones', 1500);
+        }
+      } catch (e) {
+        btnSaveScoring.textContent = 'Error';
+      }
+    });
+  }
+
+  // Recalibrate All Scores Massively
+  const btnRecalibrateAllScores = document.getElementById('btn-recalibrate-all-scores');
+  if (btnRecalibrateAllScores) {
+    btnRecalibrateAllScores.addEventListener('click', async () => {
+      if (!confirm('¿Deseas recalcular la probabilidad de exito de todos los prospectos en base a las ponderaciones actuales?')) {
+        return;
+      }
+      try {
+        btnRecalibrateAllScores.textContent = 'Recalculando...';
+        const res = await fetch('/api/v1/settings/recalibrate-scores', { method: 'POST' });
+        if (res.ok) {
+          const data = await res.json();
+          btnRecalibrateAllScores.textContent = `Actualizados: ${data.recalculated_leads}`;
+          setTimeout(() => btnRecalibrateAllScores.textContent = 'Recalcular Masivamente', 2000);
+          loadPipelineBoard();
+        }
+      } catch (e) {
+        btnRecalibrateAllScores.textContent = 'Error';
+      }
+    });
+  }
+
+  // Save 3.5 Templates
+  const btnSaveTemplates = document.getElementById('btn-save-templates');
+  if (btnSaveTemplates) {
+    btnSaveTemplates.addEventListener('click', async () => {
+      const payload = {
+        whatsapp_template: document.getElementById('settings-whatsapp-template')?.value || 'Hola, buen dia.',
+        visible_channels: {
+          whatsapp: document.getElementById('channel-toggle-wa')?.checked ?? true,
+          phone: document.getElementById('channel-toggle-tel')?.checked ?? true,
+          email: document.getElementById('channel-toggle-mail')?.checked ?? true,
+          social: document.getElementById('channel-toggle-social')?.checked ?? true
+        }
+      };
+      try {
+        btnSaveTemplates.textContent = 'Guardando...';
+        const res = await fetch('/api/v1/settings/templates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          btnSaveTemplates.textContent = 'Guardado';
+          setTimeout(() => btnSaveTemplates.textContent = 'Guardar Plantillas y Canales', 1500);
+          loadPipelineBoard();
+        }
+      } catch (e) {
+        btnSaveTemplates.textContent = 'Error';
+      }
+    });
+  }
+
+  // Save 3.6 Pipeline Rules
+  const btnSavePipelineRules = document.getElementById('btn-save-pipeline-rules');
+  if (btnSavePipelineRules) {
+    btnSavePipelineRules.addEventListener('click', async () => {
+      const payload = {
+        stagnation_threshold_hours: parseInt(document.getElementById('settings-stagnation-hours')?.value || 48, 10),
+        alert_lead_hours: parseInt(document.getElementById('settings-alert-lead-hours')?.value || 24, 10)
+      };
+      try {
+        btnSavePipelineRules.textContent = 'Guardando...';
+        const res = await fetch('/api/v1/settings/pipeline', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          btnSavePipelineRules.textContent = 'Guardado';
+          setTimeout(() => btnSavePipelineRules.textContent = 'Guardar Reglas', 1500);
+        }
+      } catch (e) {
+        btnSavePipelineRules.textContent = 'Error';
+      }
+    });
+  }
+
+  // 3.8 Security: Set PIN
+  const btnSetPin = document.getElementById('btn-set-pin');
+  if (btnSetPin) {
+    btnSetPin.addEventListener('click', async () => {
+      const pin = document.getElementById('settings-new-pin')?.value.trim();
+      if (!pin || pin.length < 4) {
+        alert('El PIN debe tener al menos 4 caracteres.');
+        return;
+      }
+      try {
+        btnSetPin.textContent = 'Cifrando...';
+        const res = await fetch('/api/v1/security/set-pin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin })
+        });
+        if (res.ok) {
+          btnSetPin.textContent = 'PIN Configurado';
+          document.getElementById('settings-new-pin').value = '';
+          setTimeout(() => btnSetPin.textContent = 'Establecer PIN', 1500);
+        }
+      } catch (e) {
+        btnSetPin.textContent = 'Error';
+      }
+    });
+  }
+
+  // 3.8 Security: Toggle LAN Protection
+  const btnToggleProtection = document.getElementById('btn-toggle-protection');
+  if (btnToggleProtection) {
+    btnToggleProtection.addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/v1/security/toggle-protection', { method: 'POST' });
+        if (res.ok) {
+          const data = await res.json();
+          btnToggleProtection.textContent = data.protection_enabled ? 'Deshabilitar Bloqueo' : 'Habilitar Bloqueo';
+          btnToggleProtection.classList.toggle('btn-danger', data.protection_enabled);
+        }
+      } catch (e) {
+        console.error('[Security] Error toggle:', e);
+      }
+    });
+  }
+
+  // 3.8 Backups: Export JSON
+  const btnExportJson = document.getElementById('btn-export-json');
+  if (btnExportJson) {
+    btnExportJson.addEventListener('click', () => {
+      window.open('/api/v1/maintenance/export?format=json', '_blank');
+    });
+  }
+
+  // 3.8 Backups: Export CSV
+  const btnExportCsv = document.getElementById('btn-export-csv');
+  if (btnExportCsv) {
+    btnExportCsv.addEventListener('click', () => {
+      window.open('/api/v1/maintenance/export?format=csv', '_blank');
+    });
+  }
+
+  // 3.8 Backups: Import
+  const inputImportBackup = document.getElementById('input-import-backup');
+  if (inputImportBackup) {
+    inputImportBackup.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const formData = new FormData();
+      formData.append('file', file);
+      try {
+        const res = await fetch('/api/v1/maintenance/import', {
+          method: 'POST',
+          body: formData
+        });
+        if (res.ok) {
+          alert('Copia de seguridad restaurada correctamente.');
+          loadPipelineBoard();
+        } else {
+          alert('Error al procesar el archivo de respaldo.');
+        }
+      } catch (err) {
+        alert('Error de conexion al restaurar respaldo.');
+      }
+    });
+  }
+
+  // 3.8 Maintenance: Purge Trash
+  const btnPurgeTrashAll = document.getElementById('btn-purge-trash-all');
+  if (btnPurgeTrashAll) {
+    btnPurgeTrashAll.addEventListener('click', () => {
+      openDoubleConfirm(
+        'Vaciar Papelera Definitivamente',
+        '¿Deseas purgar de forma permanente todos los prospectos descartados en la papelera? Esta accion no se puede deshacer.',
+        async () => {
+          try {
+            await fetch('/api/v1/leads/trash/empty', { method: 'POST' });
+            await loadTrashCount();
+            renderCurrentViewMode();
+          } catch (e) {
+            console.error('[PurgeTrash] Error:', e);
+          }
+        }
+      );
+    });
+  }
+
+  // 3.8 Maintenance: Factory Reset
+  const btnFactoryReset = document.getElementById('btn-factory-reset');
+  if (btnFactoryReset) {
+    btnFactoryReset.addEventListener('click', () => {
+      openDoubleConfirm(
+        'Reinicio de Fabrica (Factory Reset)',
+        'ATENCION CRITICA: Esta accion borrara todas las citas, notas, historial y prospectos de la base de datos de Tijuana y restablecera los ajustes iniciales.',
+        async () => {
+          try {
+            const res = await fetch('/api/v1/maintenance/factory-reset', { method: 'POST' });
+            if (res.ok) {
+              alert('Sistema restablecido a valores de fabrica.');
+              window.location.reload();
+            }
+          } catch (e) {
+            alert('Error al ejecutar reinicio de fabrica.');
+          }
+        }
+      );
+    });
+  }
+
+  // ============================================================================
+  // 14. FASE 6: SPOTLIGHT ONBOARDING OVERLAY (PRIMEROS PASOS)
+  // ============================================================================
+  const spotlightOverlay = document.getElementById('spotlight-overlay');
+  const spotlightCard = document.getElementById('spotlight-card');
+  const spotlightStepBadge = document.getElementById('spotlight-step-badge');
+  const spotlightTitle = document.getElementById('spotlight-title');
+  const spotlightText = document.getElementById('spotlight-text');
+  const spotlightBtnSkip = document.getElementById('spotlight-btn-skip');
+  const spotlightBtnPrev = document.getElementById('spotlight-btn-prev');
+  const spotlightBtnNext = document.getElementById('spotlight-btn-next');
+
+  const ONBOARDING_STEPS = [
+    {
+      targetId: 'nav-btn-leads',
+      title: 'Pipeline Comercial de 12 Fases',
+      text: 'Supervisa todo el ciclo de captacion, desde la extraccion inicial hasta el cierre comercial con clasificacion en tiempo real.'
+    },
+    {
+      targetId: 'nav-btn-map',
+      title: 'Mapa Interactivo de Tijuana',
+      text: 'Explora la cobertura geoespacial por delegaciones (Zona Rio, Centro, Otay) y activa barridos de escaneo hibrido en vivo.'
+    },
+    {
+      targetId: 'top-btn-new-lead',
+      title: 'Registro de Prospectos & Deduplicacion',
+      text: 'Ingresa prospectos manuales con deteccion instantanea de duplicados por telefono E.164, dominio normalizado y ubicacion.'
+    },
+    {
+      targetId: 'nav-btn-calendar',
+      title: 'Agenda Comercial & Citas',
+      text: 'Programa llamadas y reuniones con calculo de anticipacion y recordatorios visuales 100% locales sin depender de la nube.'
+    },
+    {
+      targetId: 'nav-btn-metrics',
+      title: 'Embudo y Analitica Comercial',
+      text: 'Mide la conversion entre cada etapa comercial, analiza las objeciones mas frecuentes y evalua el promedio de exito.'
+    },
+    {
+      targetId: 'nav-btn-settings',
+      title: 'Ajustes Modulares & Seguridad Argon2id',
+      text: 'Personaliza los 8 modulos de operacion, calibra los pesos predictivos de auditoria y protege el acceso en tu red local.'
+    }
+  ];
+
+  function startSpotlightTour() {
+    state.onboardingStep = 1;
+    if (spotlightOverlay) spotlightOverlay.style.display = 'block';
+    renderSpotlightStep();
+  }
+
+  function renderSpotlightStep() {
+    const stepData = ONBOARDING_STEPS[state.onboardingStep - 1];
+    if (!stepData) return;
+
+    // Remove previous highlights
+    document.querySelectorAll('.spotlight-target-highlight').forEach(el => {
+      el.classList.remove('spotlight-target-highlight');
+    });
+
+    const targetEl = document.getElementById(stepData.targetId);
+    if (targetEl) {
+      targetEl.classList.add('spotlight-target-highlight');
+      const rect = targetEl.getBoundingClientRect();
+
+      if (spotlightCard) {
+        if (window.innerWidth > 768) {
+          // Desktop positioning
+          let top = rect.top;
+          let left = rect.right + 20;
+          if (left + 360 > window.innerWidth) {
+            left = rect.left;
+            top = rect.bottom + 16;
+          }
+          spotlightCard.style.top = `${Math.max(20, top)}px`;
+          spotlightCard.style.left = `${Math.max(20, left)}px`;
+        }
+      }
+    }
+
+    if (spotlightStepBadge) spotlightStepBadge.textContent = `Paso ${state.onboardingStep} de ${ONBOARDING_STEPS.length}`;
+    if (spotlightTitle) spotlightTitle.textContent = stepData.title;
+    if (spotlightText) spotlightText.textContent = stepData.text;
+
+    if (spotlightBtnPrev) spotlightBtnPrev.style.display = state.onboardingStep > 1 ? 'inline-flex' : 'none';
+    if (spotlightBtnNext) spotlightBtnNext.textContent = state.onboardingStep === ONBOARDING_STEPS.length ? 'Finalizar' : 'Siguiente';
+  }
+
+  function nextSpotlightStep() {
+    if (state.onboardingStep < ONBOARDING_STEPS.length) {
+      state.onboardingStep++;
+      renderSpotlightStep();
+    } else {
+      finishSpotlightTour();
+    }
+  }
+
+  function prevSpotlightStep() {
+    if (state.onboardingStep > 1) {
+      state.onboardingStep--;
+      renderSpotlightStep();
+    }
+  }
+
+  function finishSpotlightTour() {
+    document.querySelectorAll('.spotlight-target-highlight').forEach(el => {
+      el.classList.remove('spotlight-target-highlight');
+    });
+    if (spotlightOverlay) spotlightOverlay.style.display = 'none';
+    localStorage.setItem('crm_onboarded', 'true');
+    fetch('/api/v1/onboarding/complete', { method: 'POST' }).catch(() => {});
+  }
+
+  if (spotlightBtnNext) spotlightBtnNext.addEventListener('click', nextSpotlightStep);
+  if (spotlightBtnPrev) spotlightBtnPrev.addEventListener('click', prevSpotlightStep);
+  if (spotlightBtnSkip) spotlightBtnSkip.addEventListener('click', finishSpotlightTour);
+  if (btnStartOnboarding) btnStartOnboarding.addEventListener('click', startSpotlightTour);
+
+  async function checkOnboardingInitial() {
+    if (localStorage.getItem('crm_onboarded') === 'true') return;
+    try {
+      const res = await fetch('/api/v1/onboarding/status');
+      if (res.ok) {
+        const data = await res.json();
+        if (!data.completed) {
+          setTimeout(() => startSpotlightTour(), 600);
+        }
+      }
+    } catch (e) {}
+  }
+
+  // ============================================================================
+  // 15. FASE 6: PANTALLA DE BLOQUEO POR PIN (ARGON2ID LOCAL PROTECTION)
+  // ============================================================================
+  const pinLockOverlay = document.getElementById('pin-lock-overlay');
+  const formPinUnlock = document.getElementById('form-pin-unlock');
+  const inputUnlockPin = document.getElementById('input-unlock-pin');
+  const pinErrorMsg = document.getElementById('pin-error-msg');
+
+  async function checkSecurityLock() {
+    try {
+      const res = await fetch('/api/v1/security/status');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.protection_enabled && sessionStorage.getItem('crm_pin_unlocked') !== 'true') {
+        if (pinLockOverlay) pinLockOverlay.style.display = 'flex';
+        if (inputUnlockPin) inputUnlockPin.focus();
+      }
+    } catch (e) {
+      console.error('[Security] Error check:', e);
+    }
+  }
+
+  if (formPinUnlock) {
+    formPinUnlock.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const pin = inputUnlockPin?.value.trim();
+      if (!pin) return;
+
+      try {
+        const res = await fetch('/api/v1/security/verify-pin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin })
+        });
+        const data = await res.json();
+        if (data.valid) {
+          sessionStorage.setItem('crm_pin_unlocked', 'true');
+          if (pinLockOverlay) pinLockOverlay.style.display = 'none';
+          if (pinErrorMsg) pinErrorMsg.style.display = 'none';
+        } else {
+          if (pinErrorMsg) pinErrorMsg.style.display = 'block';
+          if (inputUnlockPin) {
+            inputUnlockPin.value = '';
+            inputUnlockPin.focus();
+          }
+        }
+      } catch (err) {
+        if (pinErrorMsg) {
+          pinErrorMsg.textContent = 'Error de verificacion';
+          pinErrorMsg.style.display = 'block';
+        }
       }
     });
   }
@@ -1650,4 +2604,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // Start initial loads
   initLiveReload();
   loadInitialData();
+  checkSecurityLock();
+  checkOnboardingInitial();
 });
