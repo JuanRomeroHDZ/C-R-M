@@ -1,0 +1,104 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: crm_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - crm_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${HOST_BIND_IP:-127.0.0.1}:${HOST_PORT_DB}:5432"
+    networks:
+      - crm_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: crm_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - crm_redis_data:/data
+    ports:
+      - "${HOST_BIND_IP:-127.0.0.1}:${HOST_PORT_REDIS}:6379"
+    networks:
+      - crm_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: crm_backend
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      APP_SECRET_KEY: ${APP_SECRET_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      SCRAPER_CONCURRENCY_LIMIT: ${SCRAPER_CONCURRENCY_LIMIT:-5}
+    ports:
+      - "${HOST_BIND_IP:-127.0.0.1}:${HOST_PORT_BACKEND}:8000"
+    networks:
+      - crm_network
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: crm_frontend
+    restart: unless-stopped
+    ports:
+      - "${HOST_BIND_IP:-127.0.0.1}:${HOST_PORT_FRONTEND}:80"
+    networks:
+      - crm_network
+
+  proxy:
+    build:
+      context: ./proxy
+      dockerfile: Dockerfile
+    container_name: crm_proxy
+    restart: unless-stopped
+    ports:
+      - "${PROXY_BIND_IP:-0.0.0.0}:${HOST_PORT_PROXY}:80"
+    networks:
+      - crm_network
+    depends_on:
+      - backend
+      - frontend
+
+volumes:
+  crm_postgres_data:
+    driver: local
+  crm_redis_data:
+    driver: local
+
+networks:
+  crm_network:
+    driver: bridge

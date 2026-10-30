@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CRM Engine - Infraestructura Local</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="layout">
+    <header>
+      <div class="header-top">
+        <h1>Sistema de Captacion y CRM Local</h1>
+        <span class="tag">Fase 1: Infraestructura</span>
+      </div>
+      <p class="subtitle">Plataforma autonoma de prospeccion y gestion comercial en Tijuana, BC.</p>
+    </header>
+
+    <main>
+      <div class="section-title">Estado de Servicios en Contenedores</div>
+      <div class="grid">
+        <div class="card" id="card-proxy">
+          <div class="card-header">
+            <span class="card-title">Proxy Inverso</span>
+            <span class="status-dot online" id="dot-proxy"></span>
+          </div>
+          <div class="card-value" id="val-proxy">Activo</div>
+          <div class="card-meta">Enrutamiento perimetral</div>
+        </div>
+
+        <div class="card" id="card-backend">
+          <div class="card-header">
+            <span class="card-title">Backend API</span>
+            <span class="status-dot" id="dot-backend"></span>
+          </div>
+          <div class="card-value" id="val-backend">Consultando...</div>
+          <div class="card-meta">Motor asincrono FastAPI</div>
+        </div>
+
+        <div class="card" id="card-db">
+          <div class="card-header">
+            <span class="card-title">PostgreSQL</span>
+            <span class="status-dot" id="dot-db"></span>
+          </div>
+          <div class="card-value" id="val-db">Consultando...</div>
+          <div class="card-meta">Persistencia relacional</div>
+        </div>
+
+        <div class="card" id="card-redis">
+          <div class="card-header">
+            <span class="card-title">Redis</span>
+            <span class="status-dot" id="dot-redis"></span>
+          </div>
+          <div class="card-value" id="val-redis">Consultando...</div>
+          <div class="card-meta">Colas y cache en memoria</div>
+        </div>
+      </div>
+
+      <div class="section-title">Especificaciones del Entorno</div>
+      <div class="panel">
+        <table class="info-table">
+          <thead>
+            <tr>
+              <th>Componente</th>
+              <th>Propiedad</th>
+              <th>Valor / Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Red</td>
+              <td>Aislamiento</td>
+              <td class="code-cell">Puente interno (crm_network)</td>
+            </tr>
+            <tr>
+              <td>Geolocalizacion</td>
+              <td>Zona de Cobertura</td>
+              <td class="code-cell">Tijuana, Baja California</td>
+            </tr>
+            <tr>
+              <td>Asignacion de Puertos</td>
+              <td>Mapeo de Host</td>
+              <td class="code-cell">Deteccion y asignacion dinamica</td>
+            </tr>
+            <tr>
+              <td>Persistencia</td>
+              <td>Volumenes Docker</td>
+              <td class="code-cell">crm_postgres_data, crm_redis_data</td>
+            </tr>
+            <tr>
+              <td>Disponibilidad LAN</td>
+              <td>Acceso en Red Local</td>
+              <td class="code-cell" id="lan-access">Habilitado bajo Doble NAT</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+
+    <footer>
+      <div>Arquitectura de microservicios locales orientada a Debian Linux</div>
+      <button class="refresh-btn" id="btn-refresh" type="button">Actualizar Estado</button>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
