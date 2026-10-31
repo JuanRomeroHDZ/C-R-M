@@ -1166,17 +1166,44 @@ document.addEventListener('DOMContentLoaded', () => {
       btnNoWa.dataset.tooltip = 'Sin WhatsApp (Linea fija)';
       btnNoWa.innerHTML = `<svg style="width:14px;height:14px;" stroke="currentColor" fill="none"><use href="#icon-phone-off"/></svg>`;
       btnNoWa.addEventListener('click', async () => {
-        await fetch(`/api/v1/leads/${lead.id}/mark-no-whatsapp`, { method: 'POST' });
         lead.has_whatsapp = false;
+        if (!lead.channels_status) lead.channels_status = {};
+        lead.channels_status.whatsapp = 'DESCARTADO_MANUALMENTE';
         populateDrawerActions(lead);
-        loadPipelineBoard();
+        showCommercialToast('Marcado sin WhatsApp (Solo linea fija)');
+        try {
+          await fetch(`/api/v1/leads/${lead.id}/mark-no-whatsapp`, { method: 'POST' });
+          loadPipelineBoard();
+          loadLeadTimeline(lead.id);
+        } catch (e) {
+          console.error('[NoWa] Error:', e);
+        }
       });
       drawerActionBar.appendChild(btnNoWa);
     } else {
       const btnFixed = document.createElement('button');
       btnFixed.className = 'btn-solo-icon disabled';
-      btnFixed.dataset.tooltip = 'Solo linea fija';
+      btnFixed.style.opacity = '0.35';
+      btnFixed.dataset.tooltip = 'Solo linea fija (Clic para reactivar WhatsApp)';
       btnFixed.innerHTML = `<svg style="width:14px;height:14px;" stroke="currentColor" fill="none"><use href="#icon-phone-off"/></svg>`;
+      btnFixed.addEventListener('click', async () => {
+        lead.has_whatsapp = true;
+        if (!lead.channels_status) lead.channels_status = {};
+        lead.channels_status.whatsapp = 'DISPONIBLE';
+        populateDrawerActions(lead);
+        showCommercialToast('WhatsApp reactivado como canal disponible');
+        try {
+          await fetch(`/api/v1/leads/${lead.id}/channels`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ channel: 'whatsapp', status: 'DISPONIBLE' })
+          });
+          loadPipelineBoard();
+          loadLeadTimeline(lead.id);
+        } catch (e) {
+          console.error('[ReactivateWa] Error:', e);
+        }
+      });
       drawerActionBar.appendChild(btnFixed);
     }
 
@@ -1212,6 +1239,65 @@ document.addEventListener('DOMContentLoaded', () => {
       btnWeb.addEventListener('click', () => openInAppWebPreview(lead));
       drawerActionBar.appendChild(btnWeb);
     }
+
+    // Social Networks Actions (Dynamic availability sync)
+    if (lead.social_links && typeof lead.social_links === 'object') {
+      const socialKeys = ['facebook', 'instagram', 'tiktok', 'linkedin', 'x', 'youtube'];
+      socialKeys.forEach(sKey => {
+        const sUrl = lead.social_links[sKey];
+        if (sUrl && typeof sUrl === 'string' && sUrl.trim().length > 0) {
+          const isAvail = (lead.channels_status && lead.channels_status[sKey]) !== 'NO_DISPONIBLE' && (lead.channels_status && lead.channels_status[sKey]) !== 'DESCARTADO_MANUALMENTE';
+          const btnSoc = document.createElement('button');
+          btnSoc.type = 'button';
+          btnSoc.className = `btn-solo-icon ${!isAvail ? 'disabled' : ''}`;
+          btnSoc.style.opacity = isAvail ? '1' : '0.35';
+          btnSoc.style.filter = isAvail ? 'none' : 'grayscale(1)';
+          btnSoc.dataset.tooltip = `${sKey.toUpperCase()}: ${isAvail ? 'Disponible (Clic para abrir / Clic derecho para desactivar)' : 'No disponible (Clic para activar)'}`;
+          btnSoc.innerHTML = `<svg style="width:14px;height:14px;" stroke="currentColor" fill="none"><use href="#icon-share-2"/></svg>`;
+
+          btnSoc.addEventListener('click', async (e) => {
+            if (!isAvail) {
+              // Reactivate
+              e.preventDefault();
+              if (!lead.channels_status) lead.channels_status = {};
+              lead.channels_status[sKey] = 'DISPONIBLE';
+              populateDrawerActions(lead);
+              showCommercialToast(`Canal ${sKey.toUpperCase()} reactivado`);
+              await fetch(`/api/v1/leads/${lead.id}/channels`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ channel: sKey, status: 'DISPONIBLE' })
+              });
+              loadLeadTimeline(lead.id);
+            } else {
+              window.open(sUrl, '_blank');
+              logInteraction(lead.id, sKey.toUpperCase(), `Apertura de canal ${sKey}`);
+            }
+          });
+
+          btnSoc.addEventListener('contextmenu', async (e) => {
+            e.preventDefault();
+            const nextStatus = isAvail ? 'NO_DISPONIBLE' : 'DISPONIBLE';
+            if (!lead.channels_status) lead.channels_status = {};
+            lead.channels_status[sKey] = nextStatus;
+            populateDrawerActions(lead);
+            showCommercialToast(`Canal ${sKey.toUpperCase()} marcado como ${nextStatus === 'DISPONIBLE' ? 'Disponible' : 'No disponible'}`);
+            try {
+              await fetch(`/api/v1/leads/${lead.id}/channels`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ channel: sKey, status: nextStatus })
+              });
+              loadLeadTimeline(lead.id);
+            } catch (err) {
+              console.error('Error updating channel status:', err);
+            }
+          });
+
+          drawerActionBar.appendChild(btnSoc);
+        }
+      });
+    }
   }
 
   async function logInteraction(leadId, channel, notes) {
@@ -1240,6 +1326,10 @@ document.addEventListener('DOMContentLoaded', () => {
       btn.classList.add('active');
       const target = document.getElementById(btn.dataset.tab);
       if (target) target.style.display = 'block';
+
+      if (btn.dataset.tab === 'tab-timeline' && state.selectedLead) {
+        loadLeadTimeline(state.selectedLead.id);
+      }
     });
   });
 
@@ -1314,45 +1404,64 @@ document.addEventListener('DOMContentLoaded', () => {
       if (res.ok) {
         const data = await res.json();
         if (drawerTimelineFeed) {
-          if (data.timeline.length === 0) {
-            drawerTimelineFeed.innerHTML = '<div style="color:var(--text-muted); font-size:11px;">Sin eventos en el historial.</div>';
+          if (!data.timeline || data.timeline.length === 0) {
+            drawerTimelineFeed.innerHTML = '<div style="color:var(--text-muted); font-size:11px; padding:16px; text-align:center;">Sin actividad registrada aun. Cada llamada, mensaje o cambio de fase aparecera aqui cronologicamente.</div>';
           } else {
             drawerTimelineFeed.innerHTML = data.timeline.map(item => {
-              const dt = new Date(item.timestamp).toLocaleString('es-MX');
+              const dt = new Date(item.timestamp).toLocaleString('es-MX', {
+                day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
+              });
+              let iconSvg = '<svg class="icon-inline" style="width:13px;height:13px;"><use href="#icon-activity"/></svg>';
+              let title = '';
+              let desc = '';
+
               if (item.type === 'STAGE_CHANGE') {
+                iconSvg = '<svg class="icon-inline" style="width:13px;height:13px;color:var(--badge-blue-text);"><use href="#icon-git-commit"/></svg>';
                 const durationMinutes = Math.round((item.duration_seconds || 0) / 60);
-                return `
-                  <div class="timeline-item">
-                    <div class="timeline-header">
-                      <span>Fase: ${escapeHtml(item.from_stage || 'INICIAL')} &rarr; ${escapeHtml(item.to_stage)}</span>
-                      <span class="timeline-time">${dt}</span>
-                    </div>
-                    <div style="color:var(--text-secondary);">
-                      Permanencia: ${durationMinutes} min. ${item.notes ? `&bull; ${escapeHtml(item.notes)}` : ''}
-                      ${item.reason ? `<br><strong>Motivo:</strong> ${escapeHtml(item.reason)}` : ''}
-                    </div>
-                  </div>
-                `;
+                title = `Fase: ${escapeHtml(item.from_stage || 'INICIAL')} &rarr; ${escapeHtml(item.to_stage)}`;
+                desc = `Permanencia: ${durationMinutes} min. ${item.notes ? '&bull; ' + escapeHtml(item.notes) : ''}${item.reason ? '<br><strong>Motivo:</strong> ' + escapeHtml(item.reason) : ''}`;
               } else if (item.type === 'NOTE') {
-                return `
-                  <div class="timeline-item">
-                    <div class="timeline-header">
-                      <span>Nota de ${escapeHtml(item.author || 'Usuario')}</span>
-                      <span class="timeline-time">${dt}</span>
-                    </div>
-                    <div style="color:var(--text-main);">${escapeHtml(item.content)}</div>
-                  </div>
-                `;
+                iconSvg = '<svg class="icon-inline" style="width:13px;height:13px;color:var(--text-main);"><use href="#icon-file-text"/></svg>';
+                title = `Nota de ${escapeHtml(item.author || 'Usuario')}`;
+                desc = escapeHtml(item.content);
               } else {
-                return `
-                  <div class="timeline-item">
-                    <div class="timeline-header">
-                      <span>[${escapeHtml(item.channel)}] ${escapeHtml(item.action)}</span>
+                const ch = (item.channel || '').toUpperCase();
+                const act = (item.action || '').toUpperCase();
+                if (ch.includes('WHATSAPP')) {
+                  iconSvg = '<svg class="icon-inline" style="width:13px;height:13px;color:var(--badge-green-text);"><use href="#icon-message-circle"/></svg>';
+                  title = 'Mensaje WhatsApp';
+                } else if (ch.includes('LLAMADA') || act.includes('CALL')) {
+                  iconSvg = '<svg class="icon-inline" style="width:13px;height:13px;color:var(--badge-blue-text);"><use href="#icon-phone"/></svg>';
+                  title = 'Llamada Telefonica';
+                } else if (act.includes('AUDIT') || ch.includes('AUDIT')) {
+                  iconSvg = '<svg class="icon-inline" style="width:13px;height:13px;color:var(--badge-amber-text);"><use href="#icon-search"/></svg>';
+                  title = 'Auditoria Tecnica';
+                } else if (act.includes('EDICION')) {
+                  iconSvg = '<svg class="icon-inline" style="width:13px;height:13px;color:var(--text-secondary);"><use href="#icon-edit-2"/></svg>';
+                  title = 'Ficha Modificada';
+                } else if (act.includes('CANAL')) {
+                  iconSvg = '<svg class="icon-inline" style="width:13px;height:13px;color:var(--badge-amber-text);"><use href="#icon-sliders"/></svg>';
+                  title = 'Estado de Canal Actualizado';
+                } else {
+                  iconSvg = '<svg class="icon-inline" style="width:13px;height:13px;"><use href="#icon-check-circle"/></svg>';
+                  title = escapeHtml(item.action || item.channel);
+                }
+                const metaStr = item.metadata ? (typeof item.metadata === 'string' ? item.metadata : JSON.stringify(item.metadata)) : '';
+                desc = escapeHtml(item.notes || metaStr || '');
+              }
+
+              return `
+                <div class="timeline-entry">
+                  <div class="timeline-entry-icon">${iconSvg}</div>
+                  <div class="timeline-entry-body">
+                    <div class="timeline-entry-header">
+                      <strong class="timeline-entry-title">${title}</strong>
                       <span class="timeline-time">${dt}</span>
                     </div>
+                    ${desc ? `<div class="timeline-entry-desc">${desc}</div>` : ''}
                   </div>
-                `;
-              }
+                </div>
+              `;
             }).join('');
           }
         }
@@ -1421,7 +1530,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const d = stagePostponedDate.value;
         const n = stagePostponedNote.value.trim();
         if (!d || !n) {
-          alert('Fecha y nota son obligatorias para postergar.');
+          showCommercialToast('Fecha y nota son obligatorias para postergar.', true);
           return;
         }
         payload.reactivation_date = new Date(d).toISOString();
@@ -1429,7 +1538,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } else if (targetStage === 'REGRETTED') {
         const r = stageRegretReason.value;
         if (!r) {
-          alert('Selecciona el motivo de retractacion.');
+          showCommercialToast('Selecciona el motivo de retractacion.', true);
           return;
         }
         payload.regret_reason = r;
@@ -1440,7 +1549,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } else if (targetStage === 'CLOSED_LOST') {
         const l = stageLossReason.value;
         if (!l) {
-          alert('Selecciona el motivo de descarte.');
+          showCommercialToast('Selecciona el motivo de descarte.', true);
           return;
         }
         payload.loss_reason = l;
@@ -1458,6 +1567,36 @@ document.addEventListener('DOMContentLoaded', () => {
   async function executeStageTransition(payload) {
     if (!state.pendingStageTransition) return;
     const { leadId } = state.pendingStageTransition;
+    const targetStage = payload.stage;
+
+    // 1. Optimistic UI update on Kanban and Table
+    const cardEl = document.querySelector(`.kanban-card[data-lead-id="${leadId}"]`);
+    const origParent = cardEl ? cardEl.parentElement : null;
+    const destList = document.querySelector(`.kanban-cards-list[data-stage="${targetStage}"]`);
+
+    const leadObj = state.leads.find(l => l.id === leadId);
+    const origStage = leadObj ? leadObj.lifecycle_stage : null;
+
+    if (cardEl && destList && origParent && origParent !== destList) {
+      destList.prepend(cardEl);
+      const origCol = origParent.closest('.kanban-column');
+      const destCol = destList.closest('.kanban-column');
+      if (origCol) {
+        const countEl = origCol.querySelector('.kanban-column-count');
+        if (countEl) countEl.textContent = Math.max(0, parseInt(countEl.textContent || '0', 10) - 1);
+      }
+      if (destCol) {
+        const countEl = destCol.querySelector('.kanban-column-count');
+        if (countEl) countEl.textContent = parseInt(countEl.textContent || '0', 10) + 1;
+      }
+    }
+
+    if (leadObj) leadObj.lifecycle_stage = targetStage;
+    if (state.selectedLead && state.selectedLead.id === leadId) {
+      state.selectedLead.lifecycle_stage = targetStage;
+      if (drawerCurrentStage) drawerCurrentStage.textContent = targetStage;
+      if (drawerStageSelect) drawerStageSelect.value = targetStage;
+    }
 
     try {
       const res = await fetch(`/api/v1/leads/${leadId}/stage`, {
@@ -1466,20 +1605,32 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify(payload)
       });
       if (res.ok) {
+        showCommercialToast(`Prospecto movido a ${targetStage}`);
         await loadPipelineBoard();
-        // If drawer open, refresh it
-        if (state.selectedLead && state.selectedLead.id === leadId) {
-          state.selectedLead.lifecycle_stage = payload.stage;
-          if (drawerCurrentStage) drawerCurrentStage.textContent = payload.stage;
-          if (drawerStageSelect) drawerStageSelect.value = payload.stage;
-          loadLeadTimeline(leadId);
-        }
+        loadLeadTimeline(leadId);
       } else {
         const err = await res.json();
-        alert(`Error al cambiar de fase: ${err.detail || 'Operacion no permitida'}`);
+        // Rollback gracefully
+        if (cardEl && origParent) {
+          origParent.appendChild(cardEl);
+        }
+        if (leadObj) leadObj.lifecycle_stage = origStage;
+        if (state.selectedLead && state.selectedLead.id === leadId) {
+          state.selectedLead.lifecycle_stage = origStage;
+          if (drawerCurrentStage) drawerCurrentStage.textContent = origStage;
+          if (drawerStageSelect) drawerStageSelect.value = origStage;
+        }
+        showCommercialToast(`No se pudo mover: ${err.detail || 'Transicion no permitida'}`, true);
+        await loadPipelineBoard();
       }
     } catch (e) {
       console.error('[Transition] Error:', e);
+      if (cardEl && origParent) {
+        origParent.appendChild(cardEl);
+      }
+      if (leadObj) leadObj.lifecycle_stage = origStage;
+      showCommercialToast('Fallo de red al mover prospecto.', true);
+      await loadPipelineBoard();
     }
   }
 
@@ -1656,6 +1807,8 @@ document.addEventListener('DOMContentLoaded', () => {
       loadMetricsDashboard();
     } else if (viewName === 'settings') {
       loadAllSettings();
+      loadSuspectedDuplicates();
+      renderDuplicateAssistant();
       runDiagnosticsCheck();
     }
   }
@@ -3150,14 +3303,16 @@ document.addEventListener('DOMContentLoaded', () => {
   // ============================================================================
 
   // 1. Toast Notification Helper
-  function showCommercialToast(message) {
+  function showCommercialToast(message, isError = false) {
     const existing = document.querySelector('.commercial-toast');
     if (existing) existing.remove();
 
     const toast = document.createElement('div');
-    toast.className = 'commercial-toast';
+    toast.className = `commercial-toast ${isError ? 'error' : ''}`;
+    const iconHref = isError ? '#icon-alert-triangle' : '#icon-check';
+    const iconColor = isError ? 'var(--badge-amber-text)' : 'var(--badge-green-text)';
     toast.innerHTML = `
-      <svg style="width:14px;height:14px;color:#7da382;" stroke="currentColor" fill="none"><use href="#icon-check"/></svg>
+      <svg style="width:14px;height:14px;color:${iconColor};flex-shrink:0;" stroke="currentColor" fill="none"><use href="${iconHref}"/></svg>
       <span>${escapeHtml(message)}</span>
     `;
     document.body.appendChild(toast);
@@ -3165,7 +3320,7 @@ document.addEventListener('DOMContentLoaded', () => {
       toast.style.opacity = '0';
       toast.style.transition = 'opacity 0.3s ease';
       setTimeout(() => toast.remove(), 300);
-    }, 2400);
+    }, 2500);
   }
 
   // 2. Commercial Pitch 1-Click Copy
@@ -3838,16 +3993,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 8. Atajos de Teclado Comerciales (Navegacion Agil / Una sola mano)
   window.addEventListener('keydown', (e) => {
-    // Global Search toggle (Ctrl + K or Cmd + K)
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+    const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+    const isTyping = activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select';
+
+    // Cheat Sheet: '?'
+    if ((e.key === '?' || (e.shiftKey && e.key === '/')) && !isTyping) {
+      e.preventDefault();
+      const modal = document.getElementById('modal-shortcuts-guide');
+      if (modal) modal.style.display = 'flex';
+      return;
+    }
+
+    // Global Search toggle (Ctrl + K or Cmd + K or '/')
+    if (((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') || (!isTyping && e.key === '/')) {
       e.preventDefault();
       openGlobalSearch();
       return;
     }
 
-    const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
-    const isTyping = activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select';
-
+    // Escape closes modals, drawer, preview, angle menu
     if (e.key === 'Escape') {
       if (modalGlobalSearch && modalGlobalSearch.style.display !== 'none') {
         closeGlobalSearch();
@@ -3857,6 +4021,26 @@ document.addEventListener('DOMContentLoaded', () => {
         drawerLeadDetail.style.display = 'none';
         return;
       }
+      const preview = document.getElementById('in-app-web-preview');
+      if (preview && !preview.classList.contains('hidden')) {
+        closeInAppWebPreview();
+        return;
+      }
+      const dupModal = document.getElementById('modal-merge-duplicate');
+      if (dupModal && dupModal.style.display !== 'none') {
+        dupModal.style.display = 'none';
+        return;
+      }
+      const angleMenu = document.getElementById('wa-angle-menu');
+      if (angleMenu && !angleMenu.classList.contains('hidden')) {
+        angleMenu.classList.add('hidden');
+        return;
+      }
+      document.querySelectorAll('.modal-backdrop').forEach(m => {
+        if (m.style.display === 'flex' || m.style.display === 'block') {
+          m.style.display = 'none';
+        }
+      });
       if (state.leadViewMode === 'focus') {
         state.leadViewMode = 'kanban';
         if (btnToggleKanban) btnToggleKanban.classList.add('active');
@@ -3907,6 +4091,53 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    // Rapid stage switching in Focus Mode: '1' - '9'
+    if (state.leadViewMode === 'focus' && /^[1-9]$/.test(e.key)) {
+      e.preventDefault();
+      const stageIndex = parseInt(e.key, 10) - 1;
+      if (stageIndex >= 0 && stageIndex < state.stages.length) {
+        const targetStage = state.stages[stageIndex];
+        const focusList = getFocusLeads();
+        if (focusList.length > 0) {
+          const curLead = focusList[state.focusIndex % focusList.length];
+          if (curLead) {
+            fetch(`/api/v1/leads/${curLead.id}/stage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                stage: targetStage.slug,
+                notes: 'Transicion rapida con atajo numerico en Modo Enfoque'
+              })
+            }).then(() => {
+              curLead.lifecycle_stage = targetStage.slug;
+              showCommercialToast(`Avanzado a ${targetStage.name}`);
+              state.focusIndex++;
+              renderFocusMode();
+              loadPipelineBoard();
+            }).catch(err => console.error(err));
+          }
+        }
+      }
+      return;
+    }
+
+    // Views Navigation: 1, 2, 3 (when not in Focus Mode)
+    if (state.leadViewMode !== 'focus') {
+      if (e.key === '1') {
+        const btnLeads = document.getElementById('nav-btn-leads');
+        if (btnLeads) btnLeads.click();
+        return;
+      } else if (e.key === '2') {
+        const btnMap = document.getElementById('nav-btn-map');
+        if (btnMap) btnMap.click();
+        return;
+      } else if (e.key === '3') {
+        const btnCal = document.getElementById('nav-btn-calendar');
+        if (btnCal) btnCal.click();
+        return;
+      }
+    }
+
     // WhatsApp shortcut (W)
     if (key === 'w' && state.selectedLead) {
       e.preventDefault();
@@ -3914,6 +4145,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (clean.length >= 10 && state.selectedLead.has_whatsapp !== false) {
         const msg = (state.settings.whatsapp_template || 'Hola, buen dia.').replace(/{nombre}/g, state.selectedLead.name);
         window.open(`https://wa.me/${clean}?text=${encodeURIComponent(msg)}`, '_blank');
+        recordDailyAction('whatsapp');
       }
       return;
     }
@@ -3933,29 +4165,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const noteTa = document.getElementById('drawer-note-content');
       if (noteTa) noteTa.focus();
       return;
-    }
-
-    // Focus mode numbers: 1 (Contacted), 2 (No WA), 3 (Discard)
-    if (state.leadViewMode === 'focus' && state.selectedLead) {
-      if (key === '1') {
-        e.preventDefault();
-        handleFocusContacted(state.selectedLead);
-      } else if (key === '2') {
-        e.preventDefault();
-        handleFocusNoWa(state.selectedLead);
-      } else if (key === '3') {
-        e.preventDefault();
-        handleFocusDiscard(state.selectedLead);
-      }
-    }
-
-    // Escape closes In-App Preview or Duplicate Modal
-    if (key === 'Escape') {
-      closeInAppWebPreview();
-      const dupModal = document.getElementById('modal-merge-duplicate');
-      if (dupModal) dupModal.style.display = 'none';
-      const angleMenu = document.getElementById('wa-angle-menu');
-      if (angleMenu) angleMenu.classList.add('hidden');
     }
   });
 
@@ -4230,9 +4439,138 @@ document.addEventListener('DOMContentLoaded', () => {
             dupCounter.classList.add('hidden');
           }
         }
+        const settingsCount = document.getElementById('settings-dup-count');
+        if (settingsCount) settingsCount.textContent = state.suspectedPairs.length;
+        const totalAssistant = document.getElementById('dup-assistant-total');
+        if (totalAssistant) totalAssistant.textContent = state.suspectedPairs.length;
+
+        renderDuplicateAssistant();
       }
     } catch (err) {
       console.error('Error fetching suspected duplicates:', err);
+    }
+  }
+
+  function renderDuplicateAssistant() {
+    const listEl = document.getElementById('duplicate-assistant-list');
+    const totalEl = document.getElementById('dup-assistant-total');
+    const subnavBadge = document.getElementById('settings-dup-count');
+    if (!listEl) return;
+
+    const count = (state.suspectedPairs || []).length;
+    if (totalEl) totalEl.textContent = count;
+    if (subnavBadge) subnavBadge.textContent = count;
+
+    if (count === 0) {
+      listEl.innerHTML = `
+        <div style="text-align: center; padding: 36px 16px; color: var(--text-muted); background: var(--bg-app); border: 1px solid var(--border); border-radius: var(--radius-sm);">
+          <svg style="width:28px;height:28px;margin-bottom:8px;color:var(--badge-green-text);" stroke="currentColor" fill="none"><use href="#icon-shield-check"/></svg>
+          <div style="font-size: 13px; font-weight: 600; color: var(--text-main); margin-bottom: 4px;">Base de datos limpia</div>
+          <div style="font-size: 11px; color: var(--text-secondary);">No se detectaron registros duplicados sospechosos pendientes de revision.</div>
+        </div>
+      `;
+      return;
+    }
+
+    listEl.innerHTML = state.suspectedPairs.map(pair => {
+      const pId = pair.pair_id;
+      const lA = pair.lead_a || {};
+      const lB = pair.lead_b || {};
+      return `
+        <div class="dup-pair-card" id="dup-pair-${pId}">
+          <div class="dup-pair-header">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="badge-similarity">${pair.similarity_pct}% Similitud</span>
+              <span style="font-size: 11px; color: var(--text-secondary);">${escapeHtml(pair.suggested_reason || '')}</span>
+            </div>
+            <button type="button" class="btn-action btn-dup-whitelist" data-pair-id="${pId}" style="height: 26px; font-size: 11px;">
+              <svg style="width:11px;height:11px;" stroke="currentColor" fill="none"><use href="#icon-shield-check"/></svg>
+              Son distintos (Descartar)
+            </button>
+          </div>
+
+          <div class="dup-pair-comparison">
+            <div class="dup-candidate-box">
+              <div class="dup-candidate-tag">Registro A (Original)</div>
+              <strong class="dup-candidate-name">${escapeHtml(lA.name || 'Sin nombre')}</strong>
+              <div class="dup-candidate-meta">
+                <span>${escapeHtml(lA.phone_e164 || lA.phone_raw || 'Sin tel')}</span> &bull;
+                <span>${escapeHtml(lA.primary_category || lA.category_slug || '')}</span>
+              </div>
+              <div style="font-size: 11px; color: var(--text-secondary);">${escapeHtml(lA.suburb || lA.city || 'Tijuana')}</div>
+              <button type="button" class="btn-action btn-dup-merge" data-pair-id="${pId}" data-master-id="${lA.id}" data-dup-id="${lB.id}" style="margin-top: 8px; width: 100%; justify-content: center; font-size: 11px;">
+                <svg style="width:11px;height:11px;" stroke="currentColor" fill="none"><use href="#icon-git-merge"/></svg>
+                Combinar (Conservar A)
+              </button>
+            </div>
+
+            <div class="dup-candidate-box">
+              <div class="dup-candidate-tag">Registro B (Detectado)</div>
+              <strong class="dup-candidate-name">${escapeHtml(lB.name || 'Sin nombre')}</strong>
+              <div class="dup-candidate-meta">
+                <span>${escapeHtml(lB.phone_e164 || lB.phone_raw || 'Sin tel')}</span> &bull;
+                <span>${escapeHtml(lB.primary_category || lB.category_slug || '')}</span>
+              </div>
+              <div style="font-size: 11px; color: var(--text-secondary);">${escapeHtml(lB.suburb || lB.city || 'Tijuana')}</div>
+              <button type="button" class="btn-action btn-dup-merge" data-pair-id="${pId}" data-master-id="${lB.id}" data-dup-id="${lA.id}" style="margin-top: 8px; width: 100%; justify-content: center; font-size: 11px;">
+                <svg style="width:11px;height:11px;" stroke="currentColor" fill="none"><use href="#icon-git-merge"/></svg>
+                Combinar (Conservar B)
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    listEl.querySelectorAll('.btn-dup-merge').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const pairId = btn.dataset.pairId;
+        const masterId = btn.dataset.masterId;
+        const dupId = btn.dataset.dupId;
+        await executeDuplicateResolution(pairId, 'merge', masterId, dupId);
+      });
+    });
+
+    listEl.querySelectorAll('.btn-dup-whitelist').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const pairId = btn.dataset.pairId;
+        const pair = state.suspectedPairs.find(p => p.pair_id === pairId);
+        if (pair) {
+          await executeDuplicateResolution(pairId, 'whitelist', pair.lead_a.id, pair.lead_b.id);
+        }
+      });
+    });
+  }
+
+  async function executeDuplicateResolution(pairId, action, leadAId, leadBId) {
+    const pairCard = document.getElementById(`dup-pair-${pairId}`);
+    if (pairCard) pairCard.classList.add('removing');
+
+    // Optimistic UI removal
+    state.suspectedPairs = state.suspectedPairs.filter(p => p.pair_id !== pairId);
+    setTimeout(() => {
+      renderDuplicateAssistant();
+    }, 200);
+
+    const msg = action === 'merge' ? 'Prospectos combinados en una sola ficha' : 'Marcados como distintos permanentemente';
+    showCommercialToast(msg);
+
+    try {
+      await fetch('/api/v1/deduplication/resolve-suspected', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: action,
+          lead_a_id: leadAId,
+          lead_b_id: leadBId,
+          master_id: leadAId
+        })
+      });
+      loadPipelineBoard();
+    } catch (e) {
+      console.error('Error resolving duplicate:', e);
+      showCommercialToast('Error al resolver duplicado', true);
+      loadSuspectedDuplicates();
     }
   }
 
@@ -4354,8 +4692,20 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!menu) return;
 
     const rect = triggerEl.getBoundingClientRect();
-    menu.style.top = `${rect.bottom + 6}px`;
-    menu.style.left = `${Math.min(rect.left, window.innerWidth - 240)}px`;
+    const menuWidth = 230;
+    const menuHeight = 180;
+    let top = rect.bottom + 6;
+    if (top + menuHeight > window.innerHeight - 8) {
+      top = rect.top - menuHeight - 6;
+    }
+    let left = rect.left;
+    if (left + menuWidth > window.innerWidth - 8) {
+      left = window.innerWidth - menuWidth - 8;
+    }
+    if (left < 8) left = 8;
+
+    menu.style.top = `${top}px`;
+    menu.style.left = `${left}px`;
     menu.classList.remove('hidden');
   }
 
@@ -4636,6 +4986,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (top < 8) {
       top = rect.bottom + 8;
     }
+    if (top + popoverRect.height > window.innerHeight - 8) {
+      top = window.innerHeight - popoverRect.height - 8;
+    }
 
     let left = rect.left + (rect.width / 2) - (popoverRect.width / 2);
     if (left < 8) left = 8;
@@ -4653,16 +5006,44 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function initGlobalPortalPopovers() {
+    let activeTrigger = null;
+
     document.addEventListener('mouseover', (e) => {
-      const trigger = e.target.closest('[data-tooltip], [data-popover]');
+      const trigger = e.target.closest('[data-tooltip], [data-popover], .btn-popover-trigger');
       if (trigger) {
-        const text = trigger.dataset.tooltip || trigger.dataset.popover;
-        if (text) showGlobalPortalPopover(trigger, text);
+        const text = trigger.dataset.tooltip || trigger.dataset.popover || trigger.getAttribute('title');
+        if (text) {
+          activeTrigger = trigger;
+          showGlobalPortalPopover(trigger, text);
+        }
       }
     });
+
     document.addEventListener('mouseout', (e) => {
-      const trigger = e.target.closest('[data-tooltip], [data-popover]');
-      if (trigger) hideGlobalPortalPopover();
+      const trigger = e.target.closest('[data-tooltip], [data-popover], .btn-popover-trigger');
+      if (trigger) {
+        activeTrigger = null;
+        hideGlobalPortalPopover();
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      const trigger = e.target.closest('[data-tooltip], [data-popover], .btn-popover-trigger');
+      if (trigger) {
+        const text = trigger.dataset.tooltip || trigger.dataset.popover || trigger.getAttribute('title');
+        if (text) {
+          if (activeTrigger === trigger) {
+            hideGlobalPortalPopover();
+            activeTrigger = null;
+          } else {
+            activeTrigger = trigger;
+            showGlobalPortalPopover(trigger, text);
+          }
+        }
+      } else {
+        hideGlobalPortalPopover();
+        activeTrigger = null;
+      }
     });
   }
 
@@ -5040,6 +5421,7 @@ document.addEventListener('DOMContentLoaded', () => {
             recordDailyAction('edit');
             showCommercialToast('Modificaciones guardadas en la base de datos');
             loadPipelineBoard();
+            loadLeadTimeline(state.selectedLead.id);
           }
         } catch (err) {
           console.error('[InlineEdit] Error:', err);
@@ -5247,71 +5629,20 @@ document.addEventListener('DOMContentLoaded', () => {
       btnShortcutsOk.addEventListener('click', () => modalShortcuts.style.display = 'none');
     }
 
-    window.addEventListener('keydown', (e) => {
-      const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
-      const isInput = activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select';
-
-      // Ctrl + K or '/' when not typing
-      if ((e.ctrlKey && e.key.toLowerCase() === 'k') || (!isInput && e.key === '/')) {
-        e.preventDefault();
-        const globalSearchBtn = document.getElementById('top-btn-global-search');
-        if (globalSearchBtn) globalSearchBtn.click();
-        return;
-      }
-
-      // Esc closes modals, drawer, preview
-      if (e.key === 'Escape') {
-        const drawer = document.getElementById('drawer-lead-detail');
-        if (drawer && drawer.style.display === 'flex') {
-          drawer.style.display = 'none';
-          return;
+    // 7. Duplicate Assistant Trigger
+    const btnRunDupScan = document.getElementById('btn-run-duplicate-scan');
+    if (btnRunDupScan) {
+      btnRunDupScan.addEventListener('click', async () => {
+        showCommercialToast('Ejecutando escaneo profundo de duplicados...');
+        try {
+          await fetch('/api/v1/deduplication/run', { method: 'POST' });
+          await loadSuspectedDuplicates();
+          showCommercialToast('Escaneo completado');
+        } catch (e) {
+          console.error('Error scanning duplicates:', e);
         }
-        const preview = document.getElementById('in-app-web-preview');
-        if (preview && !preview.classList.contains('hidden')) {
-          preview.classList.add('hidden');
-          document.body.classList.remove('preview-open');
-          return;
-        }
-        document.querySelectorAll('.modal-backdrop').forEach(m => {
-          if (m.style.display === 'flex' || m.style.display === 'block') {
-            m.style.display = 'none';
-          }
-        });
-        return;
-      }
-
-      if (isInput) return;
-
-      // Views Navigation: 1, 2, 3
-      if (e.key === '1') {
-        const btnLeads = document.getElementById('nav-btn-leads');
-        if (btnLeads) btnLeads.click();
-      } else if (e.key === '2') {
-        const btnMap = document.getElementById('nav-btn-map');
-        if (btnMap) btnMap.click();
-      } else if (e.key === '3') {
-        const btnCal = document.getElementById('nav-btn-calendar');
-        if (btnCal) btnCal.click();
-      }
-
-      // Actions on active selected lead
-      if (state.selectedLead) {
-        if (e.key.toLowerCase() === 'c') {
-          copyCommercialPitch(state.selectedLead);
-        } else if (e.key.toLowerCase() === 'n') {
-          const notesTab = document.querySelector('.drawer-tab-btn[data-tab="tab-notes"]');
-          if (notesTab) notesTab.click();
-          const noteInput = document.getElementById('drawer-note-content');
-          if (noteInput) noteInput.focus();
-        } else if (e.key.toLowerCase() === 'w') {
-          const cleanPhone = (state.selectedLead.phone_e164 || state.selectedLead.phone_raw || '').replace(/[^0-9]/g, '');
-          if (cleanPhone.length >= 10 && state.selectedLead.has_whatsapp !== false) {
-            window.open(`https://wa.me/${cleanPhone}`, '_blank');
-            recordDailyAction('whatsapp');
-          }
-        }
-      }
-    });
+      });
+    }
   }
 
   // Start initial loads

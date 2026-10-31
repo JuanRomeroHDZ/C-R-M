@@ -733,6 +733,7 @@
             <button class="settings-nav-btn" data-mod="mod-pipeline">3.6 Reglas Pipeline</button>
             <button class="settings-nav-btn" data-mod="mod-calendar">3.7 Calendario &amp; Gmail</button>
             <button class="settings-nav-btn" data-mod="mod-security">3.8 Seguridad &amp; Respaldos</button>
+            <button class="settings-nav-btn" data-mod="mod-duplicates" id="btn-subnav-duplicates">3.9 Asistente Duplicados (<span id="settings-dup-count">0</span>)</button>
           </div>
 
           <div class="settings-panels-container">
@@ -1194,6 +1195,45 @@
               </div>
 
             </div>
+
+            <!-- MODULE 3.9: ASISTENTE DE LIMPIEZA DE DUPLICADOS (FASE 11) -->
+            <div class="settings-mod-panel" id="mod-duplicates" style="display: none;">
+              <div class="lead-card">
+                <div class="card-top">
+                  <div>
+                    <div class="lead-name">Asistente de Limpieza de Duplicados Pendientes</div>
+                    <div style="font-size: 11px; color: var(--text-secondary); margin-top: 3px;">
+                      Deteccion automatica y fusion de registros con alta similitud lexica o cercania geografica en Tijuana.
+                    </div>
+                  </div>
+                  <button type="button" class="btn-action" id="btn-run-duplicate-scan">
+                    <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-refresh"/></svg>
+                    Escanear Duplicados Ahora
+                  </button>
+                </div>
+
+                <!-- Duplicate Summary Strip -->
+                <div style="display: flex; gap: 14px; margin: 14px 0; padding: 10px 14px; background: var(--bg-app); border: 1px solid var(--border); border-radius: var(--radius-sm);">
+                  <div style="flex: 1;">
+                    <div style="font-size: 10px; text-transform: uppercase; color: var(--text-muted); font-weight: 600;">Casos Pendientes</div>
+                    <div style="font-size: 18px; font-weight: 700; color: var(--badge-amber-text);" id="dup-assistant-total">0</div>
+                  </div>
+                  <div style="flex: 2;">
+                    <div style="font-size: 10px; text-transform: uppercase; color: var(--text-muted); font-weight: 600;">Criterio de Coincidencia</div>
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">
+                      Similitud token-sort &ge; 65% o proximidad &lt; 1,500m en Tijuana.
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Duplicate Pairs Feed Container -->
+                <div id="duplicate-assistant-list" style="display: flex; flex-direction: column; gap: 12px;">
+                  <div style="text-align: center; padding: 32px 16px; color: var(--text-muted); font-size: 12px;">
+                    Cargando casos sospechosos...
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -1384,7 +1424,7 @@
                 <div style="font-size: 11px; color: var(--text-secondary);">Salud Tecnica Web:</div>
                 <div style="font-size: 16px; font-weight: 700; font-family: var(--font-mono);" id="drawer-health-score">0/100</div>
               </div>
-              <button type="button" class="btn-solo-icon" id="btn-re-audit-lead" data-tooltip="Recargar / Re-evaluar auditoria web en vivo" style="width: 32px; height: 32px;">
+              <button type="button" class="btn-solo-icon" id="btn-re-audit-lead" data-tooltip="Recargar / Re-evaluar auditoria web en vivo">
                 <svg style="width:14px;height:14px;" stroke="currentColor" fill="none"><use href="#icon-refresh"/></svg>
               </button>
             </div>
@@ -1969,7 +2009,7 @@
     <!-- Iframe Container -->
     <div class="web-preview-body">
       <div id="preview-device-frame" class="device-desktop">
-        <iframe id="preview-iframe" sandbox="allow-scripts allow-same-origin allow-forms" src="about:blank" title="Vista previa enmarcada"></iframe>
+        <iframe id="preview-iframe" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-presentation" src="about:blank" title="Vista previa enmarcada"></iframe>
       </div>
     </div>
   </aside>
@@ -2255,12 +2295,24 @@
       </div>
       <div style="padding: 12px 0; display: flex; flex-direction: column; gap: 8px; font-size: 12px;">
         <div class="shortcut-row" style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border);">
+          <span>Guia rapida de atajos (Cheat Sheet)</span>
+          <span class="kbd-badge">?</span>
+        </div>
+        <div class="shortcut-row" style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border);">
           <span>Buscar en todo el sistema</span>
           <span class="kbd-badge">Ctrl + K / /</span>
         </div>
         <div class="shortcut-row" style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border);">
           <span>Cerrar modal, ficha o visor activo</span>
           <span class="kbd-badge">Esc</span>
+        </div>
+        <div class="shortcut-row" style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border);">
+          <span>Alternar Modo Enfoque</span>
+          <span class="kbd-badge">F</span>
+        </div>
+        <div class="shortcut-row" style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border);">
+          <span>Avanzar de fase rapida (Modo Enfoque)</span>
+          <span class="kbd-badge">1 - 9 / 1 - 12</span>
         </div>
         <div class="shortcut-row" style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border);">
           <span>Siguiente / Anterior prospecto</span>

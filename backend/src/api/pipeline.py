@@ -315,6 +315,17 @@ def get_lead_timeline(lead_id: UUID):
             "timestamp": n["created_at"]
         })
 
+    # Lead capture/creation event
+    if lead.get("created_at"):
+        timeline.append({
+            "type": "ACTIVITY",
+            "id": f"created-{lead['id']}",
+            "channel": "SISTEMA",
+            "action": "PROSPECTO_CREADO",
+            "metadata": {"origen": "Extraccion / Registro inicial"},
+            "timestamp": lead["created_at"]
+        })
+
     # Sort descending by timestamp
     timeline.sort(key=lambda x: x["timestamp"], reverse=True)
 
@@ -512,9 +523,18 @@ def update_lead(lead_id: UUID, payload: LeadUpdateRequest):
         parsed = urllib.parse.urlparse(payload.website if "://" in payload.website else f"http://{payload.website}")
         norm_domain = parsed.netloc.lower().replace("www.", "")
 
+    # Normalize phone
+    phone_e164 = payload.phone_e164
+    if not phone_e164 and payload.phone_raw:
+        clean = payload.phone_raw.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+        if clean.startswith("+"):
+            phone_e164 = clean
+        elif len(clean) == 10:
+            phone_e164 = f"+52{clean}"
+
     conflict = check_duplicate(
         name=payload.name,
-        phone_e164=payload.phone_e164,
+        phone_e164=phone_e164,
         normalized_domain=norm_domain,
         exclude_id=lead_id
     )
@@ -544,9 +564,14 @@ def update_lead(lead_id: UUID, payload: LeadUpdateRequest):
     if payload.phone_raw is not None:
         updates.append("phone_raw = %s")
         params.append(payload.phone_raw.strip())
-    if payload.phone_e164 is not None:
+        if phone_e164:
+            updates.append("phone_e164 = %s")
+            params.append(phone_e164)
+            updates.append("phone_valid = TRUE")
+    elif phone_e164 is not None:
         updates.append("phone_e164 = %s")
-        params.append(payload.phone_e164.strip())
+        params.append(phone_e164)
+        updates.append("phone_valid = TRUE")
     if payload.website is not None:
         updates.append("website = %s")
         params.append(payload.website.strip())
@@ -577,12 +602,25 @@ def update_lead(lead_id: UUID, payload: LeadUpdateRequest):
     if not updates:
         return {"status": "NO_CHANGES", "id": str(lead_id)}
 
+    modified_fields = [u.split(' =')[0] for u in updates]
     updates.append("updated_at = NOW()")
     params.append(str(lead_id))
 
-    sql = f"UPDATE leads SET {', '.join(updates)} WHERE id = %s RETURNING id, name;"
-    res = execute_query(sql, tuple(params))
-    return {"status": "UPDATED", "id": str(lead_id), "lead": res[0]}
+    sql = f"UPDATE leads SET {', '.join(updates)} WHERE id = %s RETURNING id, name, category_slug, phone_raw, phone_e164, website, email, address_raw;"
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, tuple(params))
+            row = cur.fetchone()
+            cur.execute(
+                """
+                INSERT INTO lead_activity_log (lead_id, channel, action, metadata)
+                VALUES (%s, 'sistema', 'EDICION', %s::jsonb);
+                """,
+                (str(lead_id), json.dumps({"campos": modified_fields}))
+            )
+        conn.commit()
+
+    return {"status": "UPDATED", "id": str(lead_id), "lead": row}
 
 
 @router.delete("/leads/{lead_id}")

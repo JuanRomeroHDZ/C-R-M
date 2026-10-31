@@ -69,7 +69,8 @@ Documento de referencia para navegacion e indexacion por agentes de inteligencia
 - `test_e2e_fase10.py`: Suite automatizada E2E con Playwright que audita 5 resoluciones, ciclo de vida del prospecto, re-auditoria web, cotizador y dobles confirmaciones.
 - `frontend/src/index.html`: Estructura HTML humanizada con modo enfoque, bandeja para hoy, propuestas economicas, exportador, importador y atajos de teclado.
 - `frontend/src/styles.css`: Estilos minimalistas Notion/Obsidian con portal global fijado al body, bandeja para hoy, fichas imprimibles y cero desbordamientos.
-- `frontend/src/app.js`: Logica cliente para bandeja para hoy, atajos de teclado, propuestas comerciales, importador/exportador y edicion en linea permanente.
+- `frontend/src/app.js`: Logica cliente para bandeja para hoy, atajos de teclado, propuestas comerciales, importador/exportador, linea de tiempo visual, sincronizacion optimista y edicion en linea permanente.
+- `test_e2e_fase11.py`: Suite integral de pruebas automatizadas E2E de Fase 11 cubriendo 10 modulos (5 resoluciones, radios geometricos <= 10px, visor web, linea de tiempo, atajos de teclado y buscador en vivo).
 - `proxy/`: Directorio del proxy perimetral de enrutamiento inverso y aislamiento de seguridad de la red interna de contenedores.
 - `proxy/Dockerfile`: Contenedor Nginx Alpine optimizado para gestionar el trafico perimetral y transferir solicitudes entre el host y servicios.
 - `proxy/nginx.conf`: Reglas perimetrales con limitacion de tasa de peticiones, cabeceras estrictas de seguridad HTTP y enrutamiento inverso.

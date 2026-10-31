@@ -525,6 +525,64 @@ def update_lead_tags(lead_id: UUID, payload: LeadTagsUpdate):
     return {"status": "SUCCESS", "tags": payload.tags}
 
 
+class LeadChannelUpdatePayload(BaseModel):
+    channel: str
+    status: str
+
+
+@router.patch("/{lead_id}/channels")
+def update_lead_channel_status(lead_id: UUID, payload: LeadChannelUpdatePayload):
+    lead_str = str(lead_id)
+    rows = execute_query("SELECT id, channels_status, has_whatsapp FROM leads WHERE id = %s AND is_deleted = FALSE;", (lead_str,))
+    if not rows:
+        raise HTTPException(status_code=404, detail="Prospecto no encontrado.")
+
+    current_channels = rows[0].get("channels_status") or {}
+    if isinstance(current_channels, str):
+        try:
+            current_channels = json.loads(current_channels)
+        except Exception:
+            current_channels = {}
+
+    ch = payload.channel.lower().strip()
+    st = payload.status.strip()
+    current_channels[ch] = st
+
+    has_wa = rows[0].get("has_whatsapp", True)
+    if ch == "whatsapp":
+        has_wa = (st == "DISPONIBLE")
+
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE leads
+                SET channels_status = %s::jsonb,
+                    has_whatsapp = %s,
+                    updated_at = NOW()
+                WHERE id = %s;
+                """,
+                (json.dumps(current_channels), has_wa, lead_str)
+            )
+            cur.execute(
+                """
+                INSERT INTO lead_activity_log (lead_id, channel, action, metadata)
+                VALUES (%s, %s, 'ESTADO_CANAL_ACTUALIZADO', %s::jsonb);
+                """,
+                (lead_str, ch, json.dumps({"canal": ch, "estado": st}))
+            )
+        conn.commit()
+
+    return {
+        "status": "SUCCESS",
+        "lead_id": lead_str,
+        "channel": ch,
+        "channel_status": st,
+        "has_whatsapp": has_wa,
+        "channels_status": current_channels
+    }
+
+
 @router.get("/{lead_id}/pitch")
 def get_commercial_pitch(lead_id: UUID):
     rows = execute_query("SELECT * FROM leads WHERE id = %s;", (str(lead_id),))

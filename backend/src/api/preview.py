@@ -72,6 +72,9 @@ def _neutralize_framebusting(html: str) -> str:
     ]
     for pattern, replacement in patterns:
         html = re.sub(pattern, replacement, html)
+
+    # Strip meta tags that block embedding (CSP frame-ancestors and X-Frame-Options)
+    html = re.sub(r'(?i)<meta[^>]*http-equiv=["\']?(?:Content-Security-Policy|X-Frame-Options)["\']?[^>]*>', '', html)
     return html
 
 
@@ -84,8 +87,8 @@ def _build_error_page(url: str, message: str) -> str:
   <title>Vista previa no disponible</title>
   <style>
     body {{
-      background-color: #12151c;
-      color: #94a3b8;
+      background-color: #141414;
+      color: #9e9e9e;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       display: flex;
       flex-direction: column;
@@ -98,13 +101,13 @@ def _build_error_page(url: str, message: str) -> str:
     }}
     .box {{
       max-width: 480px;
-      background: #181c26;
-      border: 1px solid #232936;
+      background: #202020;
+      border: 1px solid #333333;
       border-radius: 8px;
       padding: 32px 24px;
     }}
     h2 {{
-      color: #f1f5f9;
+      color: #ececec;
       font-size: 1.1rem;
       font-weight: 600;
       margin: 0 0 12px 0;
@@ -113,17 +116,21 @@ def _build_error_page(url: str, message: str) -> str:
       font-size: 0.875rem;
       line-height: 1.5;
       margin: 0 0 20px 0;
-      color: #94a3b8;
+      color: #9e9e9e;
     }}
     .btn {{
       display: inline-block;
       padding: 8px 16px;
-      background: #2563eb;
+      background: #4a6b82;
       color: #ffffff;
       text-decoration: none;
       border-radius: 6px;
       font-size: 0.85rem;
       font-weight: 500;
+      transition: background 0.15s ease;
+    }}
+    .btn:hover {{
+      background: #5b7f9a;
     }}
   </style>
 </head>
@@ -131,7 +138,7 @@ def _build_error_page(url: str, message: str) -> str:
   <div class="box">
     <h2>Vista previa enmarcada no disponible</h2>
     <p>{message}</p>
-    <a href="{safe_url}" target="_blank" rel="noopener noreferrer" class="btn">Abrir en pestaña externa</a>
+    <a href="{safe_url}" target="_blank" rel="noopener noreferrer" class="btn">Abrir en pestana externa</a>
   </div>
 </body>
 </html>"""
