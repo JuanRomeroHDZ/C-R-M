@@ -118,6 +118,7 @@ def get_event(event_id: UUID):
 
 
 @router.put("/events/{event_id}")
+@router.patch("/events/{event_id}")
 def update_event(event_id: UUID, payload: CalendarEventUpdate):
     updates = []
     params = []

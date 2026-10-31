@@ -46,3 +46,23 @@ def build_commercial_pitch(lead: Dict[str, Any], audit: Optional[Dict[str, Any]]
         f"Hola, revise la presencia en internet de {name} ({web_url}) y note que su pagina {flaws_text}. "
         f"Con gusto podemos apoyarles a modernizarla para que brinde total confianza y capte mas pacientes y clientes en Tijuana."
     )
+
+
+def generate_commercial_pitch(lead_id: str) -> str:
+    from src.db.connection import get_db_connection
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM leads WHERE id = %s;", (str(lead_id),))
+            lead_rows = cur.fetchall()
+            if not lead_rows:
+                return ""
+            lead = lead_rows[0]
+            cur.execute(
+                "SELECT * FROM lead_web_audits WHERE lead_id = %s ORDER BY created_at DESC LIMIT 1;",
+                (str(lead_id),)
+            )
+            audit_rows = cur.fetchall()
+            audit = audit_rows[0] if audit_rows else None
+            pitch = build_commercial_pitch(lead, audit)
+            cur.execute("UPDATE leads SET commercial_pitch = %s WHERE id = %s;", (pitch, str(lead_id)))
+            return pitch
