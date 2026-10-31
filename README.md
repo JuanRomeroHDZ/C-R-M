@@ -60,19 +60,19 @@ CRM/
 |   `-- src/
 |       |-- main.py           # API principal y endpoints de salud
 |       |-- security/         # Blindaje AppSec (Argon2id, AES-256-GCM HKDF, sanitizacion)
-|       |-- geo/              # Limites perimetrales y division quadtree de Tijuana
-|       |-- extractors/       # Motores de extraccion hibrida OSM Overpass y Google Maps
-|       |-- analysis/         # Deduplicacion, auditoria web tecnica y lead scoring predictivo
+|       |-- geo/              # Limites perimetrales, geocodificador dinamico Nominatim y division quadtree
+|       |-- extractors/       # Motores de extraccion hibrida OSM Overpass y Google Maps Chromium Headless
+|       |-- analysis/         # Deduplicacion, auditoria web, scoring predictivo, evaluador de horarios y generador de pitch
 |       |-- pipeline/         # Maquina de estados del pipeline comercial de 12 etapas
-|       `-- api/              # Endpoints REST (jobs, leads, pipeline, calendar, geo, metrics, settings)
+|       `-- api/              # Endpoints REST (jobs, leads, pipeline, calendar, geo, metrics, settings, stream, diagnostics)
 |-- frontend/
 |   |-- Dockerfile            # Servidor Nginx para interfaz estatica responsiva
 |   |-- nginx.conf            # Configuracion de entrega de activos web y politicas sin cache
 |   `-- src/
 |       |-- leaflet/          # Activos locales de Leaflet 1.9.4 autoalojados 100% offline
-|       |-- app.js            # Logica de Kanban, mapa interactivo, telemetria, metricas y PIN Argon2id
-|       |-- index.html        # Vista minimalista Notion/Obsidian con 5 vistas y 8 modulos de ajustes
-|       `-- styles.css        # Paleta neutra pizarra, embudo visual, modales y superposicion spotlight
+|       |-- app.js            # Logica de Kanban, modo enfoque, buscador global Ctrl+K, cotizador y atajos
+|       |-- index.html        # Vista minimalista Notion/Obsidian con modo enfoque, cotizador y radar local
+|       `-- styles.css        # Paleta pastel mate, modo enfoque, tarjetas comerciales y buscador global
 `-- proxy/
     |-- Dockerfile            # Servidor perimetral Nginx
     `-- nginx.conf            # Reglas perimetrales, cabeceras de seguridad y limitacion de peticiones
@@ -103,6 +103,15 @@ Copie `.env.example` a `.env` o permita que `./start.sh` lo inicialice de forma 
 - `POSTGRES_PASSWORD`: Credencial generada para PostgreSQL.
 - `APP_SECRET_KEY`: Clave de firma interna de la aplicacion.
 - `JWT_SECRET`: Clave de generacion de tokens.
+
+## Verificacion Automatizada E2E (Fase 10)
+
+El proyecto incluye una suite completa de pruebas E2E con Playwright que comprueba multi-resolucion, ciclo de vida del prospecto, prevencion de duplicados y transiciones:
+
+```bash
+docker cp test_e2e_fase10.py crm_backend:/test_e2e_fase10.py
+docker exec crm_backend python /test_e2e_fase10.py
+```
 
 ## Reglas de Contribucion
 

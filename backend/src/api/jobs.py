@@ -60,18 +60,38 @@ def _hydrate_telemetry(row: dict) -> ExtractionJobTelemetry:
 
 @router.post("", response_model=ExtractionJobTelemetry, status_code=status.HTTP_201_CREATED)
 async def create_job(payload: ExtractionJobCreate):
-    # Verify category
+    # Verify or dynamically register category
     cat_rows = execute_query(
         "SELECT id, slug FROM categories WHERE slug = %s AND is_active = TRUE;",
         (payload.category_slug,)
     )
     if not cat_rows:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Active category '{payload.category_slug}' not found."
-        )
-
-    cat_id = cat_rows[0]["id"]
+        clean_name = payload.category_slug.replace("-", " ").title()
+        slug = payload.category_slug.strip().lower()
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO categories (name, slug, is_active)
+                    VALUES (%s, %s, TRUE)
+                    ON CONFLICT (slug) DO UPDATE SET is_active = TRUE
+                    RETURNING id, slug;
+                    """,
+                    (clean_name, slug)
+                )
+                inserted = cur.fetchone()
+                cat_id = inserted["id"]
+                cur.execute(
+                    """
+                    INSERT INTO category_keywords (category_id, keyword)
+                    VALUES (%s, %s)
+                    ON CONFLICT DO NOTHING;
+                    """,
+                    (cat_id, clean_name.lower())
+                )
+            conn.commit()
+    else:
+        cat_id = cat_rows[0]["id"]
 
     # Determine Bounding Box
     if payload.custom_bbox:

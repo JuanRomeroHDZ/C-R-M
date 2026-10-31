@@ -83,16 +83,16 @@ def calculate_acceptance_probability(
 
     if reviews >= scoring_config.TRACTION_REVIEWS_HIGH:
         prob += scoring_config.TRACTION_WEIGHT_HIGH
-        arguments.append(f"Alta tracción comercial en Tijuana ({reviews} reseñas en Google Maps con flujo activo de clientes)")
+        arguments.append(f"Alta popularidad ({reviews} opiniones con flujo constante de clientes)")
     elif reviews >= scoring_config.TRACTION_REVIEWS_MED:
         prob += scoring_config.TRACTION_WEIGHT_MED
-        arguments.append(f"Tracción comercial moderada ({reviews} reseñas)")
+        arguments.append(f"Actividad comercial activa ({reviews} opiniones)")
     elif reviews >= scoring_config.TRACTION_REVIEWS_LOW:
         prob += scoring_config.TRACTION_WEIGHT_LOW
 
     if rating >= scoring_config.TRACTION_RATING_THRESHOLD and reviews >= 3:
         prob += scoring_config.TRACTION_WEIGHT_RATING
-        arguments.append(f"Excelente reputación de marca ({rating} estrellas de calificación)")
+        arguments.append(f"Excelente reputacion ({rating} estrellas de calificacion)")
     elif rating > 0.0 and rating < 3.0:
         prob += scoring_config.RESISTANCE_PENALTY_POOR_RATING
 
@@ -118,52 +118,52 @@ def calculate_acceptance_probability(
 
         if social_links:
             platforms = ", ".join(k.capitalize() for k in social_links.keys())
-            arguments.append(f"Carece de sitio web propio: opera exclusivamente mediante perfiles en {platforms}")
+            arguments.append(f"Sin sitio web propio: solo tiene perfiles en {platforms}")
         else:
-            arguments.append("Carece de sitio web propio y presencia digital centralizada")
-        arguments.append("Oportunidad directa para propuesta de primera plataforma web profesional y captación")
+            arguments.append("Sin sitio web propio ni presencia digital centralizada")
+        arguments.append("Oportunidad directa para propuesta de presencia digital y captacion")
 
     else:
         # Business has a dedicated website, evaluate audit findings
         if audit:
             if not audit.get("has_ssl") or not audit.get("ssl_valid"):
                 prob += scoring_config.PAIN_WEIGHT_SSL_INVALID_OR_EXPIRED
-                arguments.append("Problema crítico: Certificado de seguridad SSL ausente o inválido (alerta de sitio no seguro para clientes)")
+                arguments.append("Sitio no seguro (Sin candado para los visitantes)")
 
             status_code = audit.get("http_status_code")
             if status_code and status_code >= 400:
                 prob += scoring_config.PAIN_WEIGHT_HTTP_ERROR
-                arguments.append(f"Problema crítico: El sitio web devuelve error de servidor HTTP {status_code}")
+                arguments.append("Página caída o rota (Los clientes no pueden abrirla)")
 
             if not audit.get("has_viewport"):
                 prob += scoring_config.PAIN_WEIGHT_NO_VIEWPORT
-                arguments.append("Deficiencia técnica: Sitio web no adaptado a celulares (pierde tráfico móvil en Tijuana)")
+                arguments.append("No se adapta a celulares (Pierde clientes que navegan en móvil)")
 
             ttfb = audit.get("ttfb_ms")
             if ttfb and ttfb > 1000.0:
                 prob += scoring_config.PAIN_WEIGHT_SLOW_TTFB
-                arguments.append(f"Rendimiento deficiente: Tiempo de respuesta del servidor lento ({ttfb} ms)")
+                arguments.append("Carga lenta (Tarda demasiado en abrir)")
 
             if not audit.get("has_google_analytics") and not audit.get("has_meta_pixel"):
                 prob += scoring_config.PAIN_WEIGHT_NO_PIXELS
-                arguments.append("Oportunidad comercial: Sin píxeles de seguimiento ni analítica (sin Meta Pixel ni Google Analytics)")
+                arguments.append("Sin rastreo de anuncios ni visitas (Pierde oportunidades de venta)")
 
             if not audit.get("has_schema_local_business"):
                 prob += scoring_config.PAIN_WEIGHT_NO_SCHEMA_LOCAL
-                arguments.append("Sin etiquetas de datos estructurados para posicionamiento local en Google")
+                arguments.append("Mal posicionado en buscadores (Dificil de encontrar en internet)")
 
     # Unclaimed business on Google Maps
     if lead.get("is_claimed") is False:
         prob += scoring_config.PAIN_WEIGHT_UNCLAIMED_BUSINESS
-        arguments.append("Ficha comercial no reclamada en Google Maps (servicio complementario de verificación)")
+        arguments.append("Ficha comercial no verificada en mapas (oportunidad de servicio de gestion)")
 
     # 3. Technical Resistance Factors
     if health_score >= 85.0:
         prob += scoring_config.RESISTANCE_PENALTY_EXCELLENT_SITE
-        arguments.append("Resistencia comercial: Ya cuenta con plataforma web moderna y optimizada (baja probabilidad de cambio)")
+        arguments.append("Ya cuenta con pagina moderna y optimizada (baja necesidad de cambio)")
     elif health_score >= 70.0:
         prob += scoring_config.RESISTANCE_PENALTY_GOOD_SITE
-        arguments.append("Resistencia moderada: Sitio web en condiciones aceptables")
+        arguments.append("Sitio web en condiciones aceptables")
 
     final_prob = max(0.0, min(100.0, round(prob, 1)))
     return final_prob, arguments

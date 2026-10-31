@@ -44,6 +44,7 @@ services:
       dockerfile: Dockerfile
     container_name: crm_backend
     restart: unless-stopped
+    shm_size: '2gb'
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-production}
       POSTGRES_HOST: db

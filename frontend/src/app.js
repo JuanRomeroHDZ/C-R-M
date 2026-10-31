@@ -29,6 +29,14 @@ document.addEventListener('DOMContentLoaded', () => {
     activeSweepJobId: null,
     sweepPollInterval: null,
     onboardingStep: 1,
+    selectedLeadIds: new Set(),
+    suspectedPairs: [],
+    leadFlags: {},
+    activeSuspectedPair: null,
+    quickFilter: null,
+    recentSearches: [],
+    activePreviewLead: null,
+    waAngleLead: null,
     settings: {
       whatsapp_template: 'Hola, buen dia.',
       lan_ip: window.location.hostname,
@@ -239,7 +247,10 @@ document.addEventListener('DOMContentLoaded', () => {
       loadPipelineBoard(),
       loadTrashCount(),
       loadCalendarEvents(),
-      loadAlerts()
+      loadAlerts(),
+      loadSuspectedDuplicates(),
+      loadRecentSearches(),
+      loadTodayTrayCount()
     ]);
   }
 
@@ -283,8 +294,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadPipelineBoard() {
     try {
-      let url = '/api/v1/pipeline/board';
-      if (state.activeCategory) url += `?category_slug=${encodeURIComponent(state.activeCategory)}`;
+      const params = new URLSearchParams();
+      if (state.activeCategory) params.append('category_slug', state.activeCategory);
+      if (state.onlyOpenNow) params.append('only_open_now', 'true');
+      if (state.tagFilter) params.append('tag', state.tagFilter);
+      const url = `/api/v1/pipeline/board${params.toString() ? '?' + params.toString() : ''}`;
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
@@ -417,18 +431,46 @@ document.addEventListener('DOMContentLoaded', () => {
   // 4. Kanban & Table Rendering
   // ============================================================================
   function renderCurrentViewMode() {
+    const focusModeContainer = document.getElementById('focus-mode-container');
+
+    if (leadsEmptyState) {
+      if (state.leadViewMode !== 'trash' && state.leads.length === 0) {
+        leadsEmptyState.style.display = 'block';
+        if (kanbanBoardContainer) kanbanBoardContainer.style.display = 'none';
+        if (denseTableContainer) denseTableContainer.style.display = 'none';
+        if (focusModeContainer) focusModeContainer.style.display = 'none';
+        return;
+      } else if (state.leadViewMode === 'trash' && state.trashLeads.length === 0) {
+        leadsEmptyState.style.display = 'block';
+        if (kanbanBoardContainer) kanbanBoardContainer.style.display = 'none';
+        if (denseTableContainer) denseTableContainer.style.display = 'none';
+        if (focusModeContainer) focusModeContainer.style.display = 'none';
+        return;
+      } else {
+        leadsEmptyState.style.display = 'none';
+      }
+    }
+
     if (state.leadViewMode === 'kanban') {
       if (kanbanBoardContainer) kanbanBoardContainer.style.display = 'flex';
       if (denseTableContainer) denseTableContainer.style.display = 'none';
+      if (focusModeContainer) focusModeContainer.style.display = 'none';
       renderKanbanBoard();
     } else if (state.leadViewMode === 'table') {
       if (kanbanBoardContainer) kanbanBoardContainer.style.display = 'none';
       if (denseTableContainer) denseTableContainer.style.display = 'block';
+      if (focusModeContainer) focusModeContainer.style.display = 'none';
       renderDenseTable(state.leads);
     } else if (state.leadViewMode === 'trash') {
       if (kanbanBoardContainer) kanbanBoardContainer.style.display = 'none';
       if (denseTableContainer) denseTableContainer.style.display = 'block';
+      if (focusModeContainer) focusModeContainer.style.display = 'none';
       renderTrashTable(state.trashLeads);
+    } else if (state.leadViewMode === 'focus') {
+      if (kanbanBoardContainer) kanbanBoardContainer.style.display = 'none';
+      if (denseTableContainer) denseTableContainer.style.display = 'none';
+      if (focusModeContainer) focusModeContainer.style.display = 'flex';
+      renderFocusMode();
     }
   }
 
@@ -449,6 +491,17 @@ document.addEventListener('DOMContentLoaded', () => {
                  (l.address_raw || '').toLowerCase().includes(q) ||
                  (l.phone_raw || '').toLowerCase().includes(q);
         });
+      }
+
+      // Filter by quick filter if any (Creative Freedom #3)
+      if (state.quickFilter === 'whatsapp') {
+        colLeads = colLeads.filter(l => l.has_whatsapp !== false && (l.phone_e164 || l.phone_raw));
+      } else if (state.quickFilter === 'phone') {
+        colLeads = colLeads.filter(l => Boolean(l.phone_e164 || l.phone_raw));
+      } else if (state.quickFilter === 'website') {
+        colLeads = colLeads.filter(l => Boolean(l.website));
+      } else if (state.quickFilter === 'duplicates') {
+        colLeads = colLeads.filter(l => Boolean(state.leadFlags[l.id]));
       }
 
       const colEl = document.createElement('div');
@@ -543,10 +596,45 @@ document.addEventListener('DOMContentLoaded', () => {
       `;
     }
 
+    // Opening status badge
+    let openBadgeHtml = '';
+    if (lead.open_status_label || lead.is_open_now !== undefined) {
+      const cls = lead.is_open_now ? 'open' : 'closed';
+      const lbl = lead.open_status_label || (lead.is_open_now ? 'Abierto ahora' : 'Cerrado');
+      openBadgeHtml = `<span class="opening-status-badge ${cls}" style="font-size:9px; padding:1px 5px;">${escapeHtml(lbl)}</span>`;
+    }
+
+    // Tags
+    let tagsHtml = '';
+    if (Array.isArray(lead.tags) && lead.tags.length > 0) {
+      tagsHtml = `<div class="card-tags">${lead.tags.slice(0, 2).map(t => `<span class="tag-chip" style="font-size:9px; padding:1px 4px;">${escapeHtml(t)}</span>`).join('')}</div>`;
+    }
+
+    // Checkbox and Suspected duplicate flag
+    const isChecked = state.selectedLeadIds.has(lead.id);
+    const hasDuplicateFlag = state.leadFlags && state.leadFlags[lead.id];
+    let dupFlagHtml = '';
+    if (hasDuplicateFlag) {
+      dupFlagHtml = `
+        <button type="button" class="btn-flag-duplicate" data-pair-id="${state.leadFlags[lead.id][0]}" title="Posible duplicado detectado">
+          <svg style="width:12px;height:12px;" stroke="currentColor" fill="none"><use href="#icon-git-merge"/></svg>
+        </button>
+      `;
+    }
+
+    const cleanPhone = (lead.phone_e164 || lead.phone_raw || '').replace(/[^0-9]/g, '');
+
     card.innerHTML = `
       <div class="kanban-card-top">
-        <div class="kanban-card-name">${escapeHtml(lead.name)}</div>
-        <span class="score-badge ${scoreClass}">${prob}%</span>
+        <div style="display:flex; align-items:center; gap:6px; flex:1; min-width:0;">
+          <input type="checkbox" class="lead-select-checkbox" data-lead-id="${lead.id}" ${isChecked ? 'checked' : ''} style="cursor:pointer; width:15px; height:15px;">
+          <div class="kanban-card-name" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(lead.name)}</div>
+          ${dupFlagHtml}
+        </div>
+        <div style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
+          ${openBadgeHtml}
+          <span class="score-badge ${scoreClass}">${prob}%</span>
+        </div>
       </div>
 
       <div class="kanban-card-meta">
@@ -555,31 +643,107 @@ document.addEventListener('DOMContentLoaded', () => {
         <span>${escapeHtml(lead.phone_e164 || lead.phone_raw || 'Sin tel')}</span>
       </div>
 
+      ${tagsHtml}
       ${alertsHtml ? `<div style="display:flex; gap:6px; flex-wrap:wrap;">${alertsHtml}</div>` : ''}
 
       <div class="kanban-card-actions">
-        ${lead.whatsapp_url ? `
-          <a href="${escapeHtml(lead.whatsapp_url)}" target="_blank" rel="noopener noreferrer" class="btn-action btn-whatsapp" style="height:26px; padding:0 6px; font-size:11px;" title="Contactar por WhatsApp">
-            <svg style="width:12px;height:12px;" stroke="currentColor" fill="none"><use href="#icon-message-circle"/></svg>
-            WA
-          </a>
+        ${lead.has_whatsapp !== false && cleanPhone.length >= 10 ? `
+          <div style="display:inline-flex; align-items:center;">
+            <button type="button" class="btn-solo-icon btn-whatsapp btn-card-wa" data-tooltip="WhatsApp">
+              <svg style="width:14px;height:14px;" stroke="currentColor" fill="none"><use href="#icon-message-circle"/></svg>
+            </button>
+            <button type="button" class="btn-solo-icon btn-wa-angle-trigger btn-card-wa-angle" data-tooltip="Enfoque de mensaje" style="width:20px; min-width:20px; margin-left:-3px; padding:0;">
+              <svg style="width:10px;height:10px;" stroke="currentColor" fill="none"><use href="#icon-sliders"/></svg>
+            </button>
+          </div>
         ` : ''}
 
         ${lead.phone_e164 || lead.phone_raw ? `
-          <a href="tel:${escapeHtml(lead.phone_e164 || lead.phone_raw)}" class="btn-action" style="height:26px; padding:0 6px; font-size:11px;" title="Llamar">
-            <svg style="width:12px;height:12px;" stroke="currentColor" fill="none"><use href="#icon-phone"/></svg>
+          <a href="tel:${escapeHtml(lead.phone_e164 || lead.phone_raw)}" class="btn-solo-icon" data-tooltip="Llamar">
+            <svg style="width:14px;height:14px;" stroke="currentColor" fill="none"><use href="#icon-phone"/></svg>
           </a>
         ` : ''}
 
-        <button class="btn-secondary-action btn-open-drawer" style="margin-left: auto; height:26px; font-size:11px;">
-          Ficha
+        ${lead.website ? `
+          <button type="button" class="btn-solo-icon btn-card-preview-web" data-tooltip="Ver sitio web">
+            <svg style="width:14px;height:14px;" stroke="currentColor" fill="none"><use href="#icon-globe"/></svg>
+          </button>
+        ` : ''}
+
+        <button type="button" class="btn-solo-icon btn-copy-card-pitch" data-tooltip="Copiar propuesta">
+          <svg style="width:14px;height:14px;" stroke="currentColor" fill="none"><use href="#icon-copy"/></svg>
+        </button>
+
+        <button type="button" class="btn-solo-icon btn-open-drawer" data-tooltip="Ficha integral" style="margin-left: auto;">
+          <svg style="width:14px;height:14px;" stroke="currentColor" fill="none"><use href="#icon-file-text"/></svg>
         </button>
       </div>
     `;
 
-    // Click card opens drawer (except when clicking buttons/links)
+    const cb = card.querySelector('.lead-select-checkbox');
+    if (cb) {
+      cb.addEventListener('change', (e) => {
+        e.stopPropagation();
+        if (cb.checked) state.selectedLeadIds.add(lead.id);
+        else state.selectedLeadIds.delete(lead.id);
+        updateBatchBar();
+      });
+      cb.addEventListener('click', (e) => e.stopPropagation());
+    }
+
+    const btnDup = card.querySelector('.btn-flag-duplicate');
+    if (btnDup) {
+      btnDup.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openDuplicateComparison(btnDup.dataset.pairId);
+      });
+    }
+
+    const btnWa = card.querySelector('.btn-card-wa');
+    if (btnWa) {
+      btnWa.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const msg = (state.settings.whatsapp_template || 'Hola, buen dia.').replace(/{nombre}/g, lead.name);
+        logInteraction(lead.id, 'WHATSAPP', 'Apertura de chat wa.me');
+        window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank');
+      });
+    }
+
+    const btnAngle = card.querySelector('.btn-card-wa-angle');
+    if (btnAngle) {
+      btnAngle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openWhatsAppAngleMenu(lead, btnAngle);
+      });
+    }
+
+    const btnWeb = card.querySelector('.btn-card-preview-web');
+    if (btnWeb) {
+      btnWeb.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openInAppWebPreview(lead);
+      });
+    }
+
+    const btnPitch = card.querySelector('.btn-copy-card-pitch');
+    if (btnPitch) {
+      btnPitch.addEventListener('click', (e) => {
+        e.stopPropagation();
+        copyCommercialPitch(lead);
+      });
+    }
+
+    const btnDrawer = card.querySelector('.btn-open-drawer');
+    if (btnDrawer) {
+      btnDrawer.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openLeadDrawer(lead);
+      });
+    }
+
+    // Click card opens drawer (except when clicking buttons/links/checkbox)
     card.addEventListener('click', (e) => {
-      if (e.target.closest('a') || e.target.closest('button.btn-whatsapp')) return;
+      if (e.target.closest('a') || e.target.closest('button') || e.target.closest('input')) return;
       openLeadDrawer(lead);
     });
 
@@ -600,10 +764,21 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
+    // Filter by quick filter if any (Creative Freedom #3)
+    if (state.quickFilter === 'whatsapp') {
+      filtered = filtered.filter(l => l.has_whatsapp !== false && (l.phone_e164 || l.phone_raw));
+    } else if (state.quickFilter === 'phone') {
+      filtered = filtered.filter(l => Boolean(l.phone_e164 || l.phone_raw));
+    } else if (state.quickFilter === 'website') {
+      filtered = filtered.filter(l => Boolean(l.website));
+    } else if (state.quickFilter === 'duplicates') {
+      filtered = filtered.filter(l => Boolean(state.leadFlags[l.id]));
+    }
+
     if (filtered.length === 0) {
       denseTableBody.innerHTML = `
         <tr>
-          <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">
+          <td colspan="9" style="text-align: center; color: var(--text-muted); padding: 24px;">
             No hay prospectos para mostrar.
           </td>
         </tr>
@@ -626,8 +801,24 @@ document.addEventListener('DOMContentLoaded', () => {
         stagText = `<span class="due-badge">Pausado</span>`;
       }
 
+      const isChecked = state.selectedLeadIds.has(lead.id);
+      const hasDup = state.leadFlags && state.leadFlags[lead.id];
+      const cleanPhone = (lead.phone_e164 || lead.phone_raw || '').replace(/[^0-9]/g, '');
+
       tr.innerHTML = `
-        <td><strong>${escapeHtml(lead.name)}</strong></td>
+        <td style="width:36px; text-align:center;">
+          <input type="checkbox" class="lead-select-checkbox" data-lead-id="${lead.id}" ${isChecked ? 'checked' : ''} style="cursor:pointer; width:15px; height:15px;">
+        </td>
+        <td>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <strong>${escapeHtml(lead.name)}</strong>
+            ${hasDup ? `
+              <button type="button" class="btn-flag-duplicate" data-pair-id="${state.leadFlags[lead.id][0]}" title="Posible duplicado detectado">
+                <svg style="width:12px;height:12px;" stroke="currentColor" fill="none"><use href="#icon-git-merge"/></svg>
+              </button>
+            ` : ''}
+          </div>
+        </td>
         <td>${escapeHtml(lead.primary_category || lead.category_slug)}</td>
         <td><span class="score-badge med">${escapeHtml(stageName)}</span></td>
         <td><strong>${prob}%</strong></td>
@@ -637,13 +828,74 @@ document.addEventListener('DOMContentLoaded', () => {
         </td>
         <td>${stagText}</td>
         <td>
-          <button class="btn-action btn-table-open" style="height:26px; padding:0 8px; font-size:11px;">
-            Ficha
-          </button>
+          <div style="display:flex; align-items:center; gap:4px;">
+            ${lead.has_whatsapp !== false && cleanPhone.length >= 10 ? `
+              <button type="button" class="btn-solo-icon btn-whatsapp btn-table-wa" data-tooltip="WhatsApp" style="width:28px; height:28px; min-width:28px; min-height:28px;">
+                <svg style="width:12px;height:12px;" stroke="currentColor" fill="none"><use href="#icon-message-circle"/></svg>
+              </button>
+            ` : ''}
+            ${lead.website ? `
+              <button type="button" class="btn-solo-icon btn-table-preview-web" data-tooltip="Ver sitio" style="width:28px; height:28px; min-width:28px; min-height:28px;">
+                <svg style="width:12px;height:12px;" stroke="currentColor" fill="none"><use href="#icon-globe"/></svg>
+              </button>
+            ` : ''}
+            <button type="button" class="btn-solo-icon btn-table-open" data-tooltip="Ficha integral" style="width:28px; height:28px; min-width:28px; min-height:28px;">
+              <svg style="width:12px;height:12px;" stroke="currentColor" fill="none"><use href="#icon-file-text"/></svg>
+            </button>
+          </div>
         </td>
       `;
 
-      tr.addEventListener('click', () => openLeadDrawer(lead));
+      const cb = tr.querySelector('.lead-select-checkbox');
+      if (cb) {
+        cb.addEventListener('change', (e) => {
+          e.stopPropagation();
+          if (cb.checked) state.selectedLeadIds.add(lead.id);
+          else state.selectedLeadIds.delete(lead.id);
+          updateBatchBar();
+        });
+        cb.addEventListener('click', (e) => e.stopPropagation());
+      }
+
+      const btnDup = tr.querySelector('.btn-flag-duplicate');
+      if (btnDup) {
+        btnDup.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openDuplicateComparison(btnDup.dataset.pairId);
+        });
+      }
+
+      const btnWa = tr.querySelector('.btn-table-wa');
+      if (btnWa) {
+        btnWa.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const msg = (state.settings.whatsapp_template || 'Hola, buen dia.').replace(/{nombre}/g, lead.name);
+          logInteraction(lead.id, 'WHATSAPP', 'Apertura de chat wa.me');
+          window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank');
+        });
+      }
+
+      const btnWeb = tr.querySelector('.btn-table-preview-web');
+      if (btnWeb) {
+        btnWeb.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openInAppWebPreview(lead);
+        });
+      }
+
+      const btnOpen = tr.querySelector('.btn-table-open');
+      if (btnOpen) {
+        btnOpen.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openLeadDrawer(lead);
+        });
+      }
+
+      tr.addEventListener('click', (e) => {
+        if (e.target.closest('a') || e.target.closest('button') || e.target.closest('input')) return;
+        openLeadDrawer(lead);
+      });
+
       denseTableBody.appendChild(tr);
     });
   }
@@ -728,7 +980,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (drawerPhone) drawerPhone.textContent = lead.phone_e164 || lead.phone_raw || 'Sin telefono registrado';
     if (drawerWebsite) {
       if (lead.website) {
-        drawerWebsite.innerHTML = `<a href="${escapeHtml(lead.website)}" target="_blank" rel="noopener noreferrer" style="color:var(--text-main);">${escapeHtml(lead.website)}</a>`;
+        drawerWebsite.innerHTML = `
+          <div style="display:flex; align-items:center; gap:8px;">
+            <button type="button" class="btn-solo-icon btn-preview-web" data-tooltip="Abrir en visor" style="width:28px; height:28px; min-width:28px; min-height:28px;">
+              <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-globe"/></svg>
+            </button>
+            <span class="preview-open-link" style="color:var(--text-main); cursor:pointer; text-decoration:underline;">${escapeHtml(lead.website)}</span>
+          </div>
+        `;
+        const btnWeb = drawerWebsite.querySelector('.btn-preview-web');
+        if (btnWeb) btnWeb.onclick = (e) => { e.preventDefault(); openInAppWebPreview(lead); };
+        const lnkWeb = drawerWebsite.querySelector('.preview-open-link');
+        if (lnkWeb) lnkWeb.onclick = (e) => { e.preventDefault(); openInAppWebPreview(lead); };
       } else {
         drawerWebsite.textContent = 'Sin sitio web';
       }
@@ -755,6 +1018,95 @@ document.addEventListener('DOMContentLoaded', () => {
     if (drawerPostponedAlert) {
       drawerPostponedAlert.style.display = lead.postponed_until ? 'inline-flex' : 'none';
     }
+
+    // Opening status badge
+    const elOpenStatus = document.getElementById('drawer-opening-status');
+    if (elOpenStatus) {
+      elOpenStatus.textContent = lead.open_status_label || (lead.is_open_now ? 'Abierto ahora' : 'Cerrado');
+      elOpenStatus.className = `opening-status-badge ${lead.is_open_now ? 'open' : 'closed'}`;
+    }
+
+    // In-Line Edit Fields Population (FASE 10)
+    const editName = document.getElementById('edit-drawer-name');
+    const editCat = document.getElementById('edit-drawer-cat');
+    const editPhone = document.getElementById('edit-drawer-phone');
+    const editWeb = document.getElementById('edit-drawer-website');
+    const editEmail = document.getElementById('edit-drawer-email');
+    const editAddr = document.getElementById('edit-drawer-address');
+    const editFb = document.getElementById('edit-drawer-fb');
+    const editIg = document.getElementById('edit-drawer-ig');
+    const editTiktok = document.getElementById('edit-drawer-tiktok');
+    const editLinkedin = document.getElementById('edit-drawer-linkedin');
+    const editX = document.getElementById('edit-drawer-x');
+    const editYt = document.getElementById('edit-drawer-yt');
+
+    if (editName) editName.value = lead.name || '';
+    if (editCat) editCat.value = lead.category_slug || 'dentistas';
+    if (editPhone) editPhone.value = lead.phone_raw || lead.phone_e164 || '';
+    if (editWeb) editWeb.value = lead.website || '';
+    if (editEmail) editEmail.value = lead.email || '';
+    if (editAddr) editAddr.value = lead.address_raw || '';
+
+    const socials = lead.social_links || {};
+    if (editFb) editFb.value = socials.facebook || '';
+    if (editIg) editIg.value = socials.instagram || '';
+    if (editTiktok) editTiktok.value = socials.tiktok || '';
+    if (editLinkedin) editLinkedin.value = socials.linkedin || '';
+    if (editX) editX.value = socials.x || '';
+    if (editYt) editYt.value = socials.youtube || '';
+
+    // Proposal Fields Population (FASE 10)
+    const propService = document.getElementById('quote-proposal-service');
+    const propCurrency = document.getElementById('quote-proposal-currency');
+    const propNotes = document.getElementById('quote-proposal-notes');
+    if (propService) propService.value = lead.proposal_service || '';
+    if (propCurrency) propCurrency.value = lead.proposal_currency || 'MXN';
+    if (propNotes) propNotes.value = lead.proposal_notes || '';
+
+    // Live Re-Audit Trigger (FASE 10)
+    const btnReAudit = document.getElementById('btn-re-audit-lead');
+    if (btnReAudit) {
+      btnReAudit.onclick = async () => {
+        btnReAudit.disabled = true;
+        btnReAudit.style.opacity = '0.5';
+        try {
+          const res = await fetch(`/api/v1/leads/${lead.id}/audit`, { method: 'POST' });
+          if (res.ok) {
+            const auditData = await res.json();
+            const score = auditData.technical_health_score !== undefined ? auditData.technical_health_score : auditData.score;
+            if (drawerHealthScore) drawerHealthScore.textContent = `${Math.round(score || 0)}/100`;
+            if (auditData.sales_arguments && drawerSalesArgsList) {
+              drawerSalesArgsList.innerHTML = auditData.sales_arguments.map(a => `<li>${escapeHtml(a)}</li>`).join('');
+            }
+            lead.technical_health_score = score;
+            lead.sales_arguments = auditData.sales_arguments || lead.sales_arguments;
+            recordDailyAction('audit');
+            showCommercialToast('Auditoria web re-evaluada con exito');
+            loadPipelineBoard();
+          }
+        } catch (e) {
+          console.error('[ReAudit] Error:', e);
+        } finally {
+          btnReAudit.disabled = false;
+          btnReAudit.style.opacity = '1';
+        }
+      };
+    }
+
+    // 1-Click Copy Commercial Pitch
+    const btnDrawerCopyPitch = document.getElementById('btn-drawer-copy-pitch');
+    if (btnDrawerCopyPitch) {
+      btnDrawerCopyPitch.onclick = () => copyCommercialPitch(lead);
+    }
+
+    // Render Drawer Tags
+    renderDrawerTags(lead);
+
+    // Init Drawer Cotizador Express
+    initDrawerQuote(lead);
+
+    // Init Drawer Radar Competencia
+    loadDrawerCompetitors(lead);
 
     // Populate Universal Action Buttons
     populateDrawerActions(lead);
@@ -787,21 +1139,32 @@ document.addEventListener('DOMContentLoaded', () => {
       const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
 
       const btnWa = document.createElement('button');
-      btnWa.className = 'btn-action btn-whatsapp';
-      btnWa.innerHTML = `
-        <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-message-circle"/></svg>
-        WhatsApp
-      `;
+      btnWa.className = 'btn-solo-icon btn-whatsapp';
+      btnWa.dataset.tooltip = 'WhatsApp';
+      btnWa.innerHTML = `<svg style="width:14px;height:14px;" stroke="currentColor" fill="none"><use href="#icon-message-circle"/></svg>`;
       btnWa.addEventListener('click', async () => {
         await logInteraction(lead.id, 'WHATSAPP', 'Apertura de chat wa.me');
         window.open(waUrl, '_blank');
       });
       drawerActionBar.appendChild(btnWa);
 
+      const btnAngle = document.createElement('button');
+      btnAngle.className = 'btn-solo-icon btn-wa-angle-trigger';
+      btnAngle.dataset.tooltip = 'Enfoque de mensaje';
+      btnAngle.style.width = '24px';
+      btnAngle.style.minWidth = '24px';
+      btnAngle.style.marginLeft = '-4px';
+      btnAngle.innerHTML = `<svg style="width:11px;height:11px;" stroke="currentColor" fill="none"><use href="#icon-sliders"/></svg>`;
+      btnAngle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openWhatsAppAngleMenu(lead, btnAngle);
+      });
+      drawerActionBar.appendChild(btnAngle);
+
       const btnNoWa = document.createElement('button');
-      btnNoWa.className = 'btn-secondary-action';
-      btnNoWa.textContent = 'Sin WhatsApp';
-      btnNoWa.title = 'Marcar como linea fija sin soporte de WhatsApp';
+      btnNoWa.className = 'btn-solo-icon';
+      btnNoWa.dataset.tooltip = 'Sin WhatsApp (Linea fija)';
+      btnNoWa.innerHTML = `<svg style="width:14px;height:14px;" stroke="currentColor" fill="none"><use href="#icon-phone-off"/></svg>`;
       btnNoWa.addEventListener('click', async () => {
         await fetch(`/api/v1/leads/${lead.id}/mark-no-whatsapp`, { method: 'POST' });
         lead.has_whatsapp = false;
@@ -811,22 +1174,21 @@ document.addEventListener('DOMContentLoaded', () => {
       drawerActionBar.appendChild(btnNoWa);
     } else {
       const btnFixed = document.createElement('button');
-      btnFixed.className = 'btn-action disabled';
-      btnFixed.textContent = 'Solo linea fija';
+      btnFixed.className = 'btn-solo-icon disabled';
+      btnFixed.dataset.tooltip = 'Solo linea fija';
+      btnFixed.innerHTML = `<svg style="width:14px;height:14px;" stroke="currentColor" fill="none"><use href="#icon-phone-off"/></svg>`;
       drawerActionBar.appendChild(btnFixed);
     }
 
     // Call Action
     if (cleanPhone.length >= 10) {
-      const btnCall = document.createElement('button');
-      btnCall.className = 'btn-action';
-      btnCall.innerHTML = `
-        <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-phone"/></svg>
-        Llamar
-      `;
+      const btnCall = document.createElement('a');
+      btnCall.className = 'btn-solo-icon';
+      btnCall.href = `tel:+${cleanPhone}`;
+      btnCall.dataset.tooltip = 'Llamar';
+      btnCall.innerHTML = `<svg style="width:14px;height:14px;" stroke="currentColor" fill="none"><use href="#icon-phone"/></svg>`;
       btnCall.addEventListener('click', async () => {
         await logInteraction(lead.id, 'LLAMADA', 'Llamada telefonica iniciada');
-        window.location.href = `tel:+${cleanPhone}`;
       });
       drawerActionBar.appendChild(btnCall);
     }
@@ -834,22 +1196,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // Email Action
     if (lead.email) {
       const btnEmail = document.createElement('a');
-      btnEmail.className = 'btn-icon-only';
+      btnEmail.className = 'btn-solo-icon';
       btnEmail.href = `mailto:${escapeHtml(lead.email)}`;
-      btnEmail.title = lead.email;
-      btnEmail.innerHTML = `<svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-mail"/></svg>`;
+      btnEmail.dataset.tooltip = 'Enviar correo';
+      btnEmail.innerHTML = `<svg style="width:14px;height:14px;" stroke="currentColor" fill="none"><use href="#icon-mail"/></svg>`;
       drawerActionBar.appendChild(btnEmail);
     }
 
-    // Website Action
+    // Website Action - Opens In-App Web Preview
     if (lead.website) {
-      const btnWeb = document.createElement('a');
-      btnWeb.className = 'btn-icon-only';
-      btnWeb.href = lead.website;
-      btnWeb.target = '_blank';
-      btnWeb.rel = 'noopener noreferrer';
-      btnWeb.title = 'Abrir sitio web';
-      btnWeb.innerHTML = `<svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-globe"/></svg>`;
+      const btnWeb = document.createElement('button');
+      btnWeb.className = 'btn-solo-icon btn-preview-web';
+      btnWeb.dataset.tooltip = 'Ver sitio web';
+      btnWeb.innerHTML = `<svg style="width:14px;height:14px;" stroke="currentColor" fill="none"><use href="#icon-globe"/></svg>`;
+      btnWeb.addEventListener('click', () => openInAppWebPreview(lead));
       drawerActionBar.appendChild(btnWeb);
     }
   }
@@ -1166,7 +1526,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!state.selectedLead) return;
       promptDoubleConfirmation(
         'Enviar Prospecto a Papelera',
-        `El prospecto "${state.selectedLead.name}" sera movido a la papelera (Soft Delete) y sus datos quedaran blindados para evitar que futuras extracciones lo vuelvan a importar como nuevo.`,
+        `El prospecto "${state.selectedLead.name}" sera movido a la papelera y sus datos quedaran blindados para evitar que futuras extracciones lo vuelvan a importar como nuevo.`,
         async () => {
           await executeSoftDeleteLead(state.selectedLead.id);
           drawerLeadDetail.style.display = 'none';
@@ -1257,106 +1617,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ============================================================================
-  // 9. Manual Lead Creation & Real-Time Duplicate Prevention
   // ============================================================================
-  if (topBtnNewLead) {
-    topBtnNewLead.addEventListener('click', () => {
-      if (formNewLead) formNewLead.reset();
-      if (leadDupAlert) leadDupAlert.style.display = 'none';
-      if (modalNewLead) modalNewLead.style.display = 'flex';
-    });
-  }
-
-  if (modalNewLeadClose) modalNewLeadClose.addEventListener('click', () => modalNewLead.style.display = 'none');
-  if (modalNewLeadCancel) modalNewLeadCancel.addEventListener('click', () => modalNewLead.style.display = 'none');
-
-  // Real-time duplicate check debounced
-  let dupDebounceTimer = null;
-  function triggerDupCheck() {
-    clearTimeout(dupDebounceTimer);
-    dupDebounceTimer = setTimeout(async () => {
-      const name = newLeadName.value.trim();
-      const phone = newLeadPhone.value.trim();
-      const website = newLeadWebsite.value.trim();
-
-      if (!name && !phone && !website) {
-        if (leadDupAlert) leadDupAlert.style.display = 'none';
-        return;
-      }
-
-      try {
-        const res = await fetch('/api/v1/leads/validate-duplicate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: name || null,
-            phone_e164: phone || null,
-            normalized_domain: website || null
-          })
-        });
-        if (res.ok) {
-          const check = await res.json();
-          if (check.is_duplicate && leadDupAlert) {
-            const ex = check.existing_lead;
-            leadDupMsg.innerHTML = `
-              Coincidencia encontrada por <strong>${escapeHtml(check.conflict_field)}</strong>: "${escapeHtml(ex.name)}" (Fase: ${ex.lifecycle_stage}${ex.is_deleted ? ', En Papelera' : ''}).
-            `;
-            leadDupAlert.style.display = 'block';
-          } else if (leadDupAlert) {
-            leadDupAlert.style.display = 'none';
-          }
-        }
-      } catch (err) {
-        console.error('[DupCheck] Error:', err);
-      }
-    }, 400);
-  }
-
-  [newLeadName, newLeadPhone, newLeadWebsite].forEach(input => {
-    if (input) input.addEventListener('input', triggerDupCheck);
-  });
-
-  if (formNewLead) {
-    formNewLead.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const name = newLeadName.value.trim();
-      if (!name) return;
-
-      const payload = {
-        name,
-        category_slug: newLeadCat.value,
-        phone_raw: newLeadPhone.value.trim() || null,
-        website: newLeadWebsite.value.trim() || null,
-        email: newLeadEmail.value.trim() || null,
-        address_raw: newLeadAddress.value.trim() || null,
-        notes: newLeadNotes.value.trim() || null
-      };
-
-      try {
-        const res = await fetch('/api/v1/leads', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-
-        if (res.ok) {
-          modalNewLead.style.display = 'none';
-          formNewLead.reset();
-          loadPipelineBoard();
-        } else {
-          const err = await res.json();
-          const detail = err.detail;
-          if (detail && detail.conflict) {
-            alert(`No se puede guardar: ${detail.message}`);
-          } else {
-            alert(`Error: ${detail || 'No se pudo registrar prospecto'}`);
-          }
-        }
-      } catch (err) {
-        console.error('[CreateLead] Error:', err);
-      }
-    });
-  }
+  // 9. Manual Lead Creation (Handled in FASE 10 Suite)
+  // ============================================================================
 
   // ============================================================================
   // 10. View Mode & Navigation Handlers
@@ -1393,6 +1656,7 @@ document.addEventListener('DOMContentLoaded', () => {
       loadMetricsDashboard();
     } else if (viewName === 'settings') {
       loadAllSettings();
+      runDiagnosticsCheck();
     }
   }
 
@@ -1402,13 +1666,24 @@ document.addEventListener('DOMContentLoaded', () => {
   [navBtnMetrics, mobNavMetrics].forEach(el => el && el.addEventListener('click', () => switchView('metrics')));
   [navBtnSettings, mobNavSettings].forEach(el => el && el.addEventListener('click', () => switchView('settings')));
 
-  // Toggle Kanban vs Table
+  // Toggle Kanban vs Table vs Focus Mode
+  const btnToggleFocus = document.getElementById('btn-toggle-focus');
+  const btnExitFocus = document.getElementById('btn-exit-focus');
+  const btnFilterOpenNow = document.getElementById('btn-filter-open-now');
+  const tagFilterSelect = document.getElementById('tag-filter-select');
+  const topBtnGlobalSearch = document.getElementById('top-btn-global-search');
+
+  if (topBtnGlobalSearch) {
+    topBtnGlobalSearch.addEventListener('click', () => openGlobalSearch());
+  }
+
   if (btnToggleKanban) {
     btnToggleKanban.addEventListener('click', () => {
       state.leadViewMode = 'kanban';
       btnToggleKanban.classList.add('active');
       if (btnToggleTable) btnToggleTable.classList.remove('active');
       if (btnToggleTrash) btnToggleTrash.classList.remove('active');
+      if (btnToggleFocus) btnToggleFocus.classList.remove('active');
       renderCurrentViewMode();
     });
   }
@@ -1419,7 +1694,45 @@ document.addEventListener('DOMContentLoaded', () => {
       btnToggleTable.classList.add('active');
       if (btnToggleKanban) btnToggleKanban.classList.remove('active');
       if (btnToggleTrash) btnToggleTrash.classList.remove('active');
+      if (btnToggleFocus) btnToggleFocus.classList.remove('active');
       renderCurrentViewMode();
+    });
+  }
+
+  if (btnToggleFocus) {
+    btnToggleFocus.addEventListener('click', () => {
+      state.leadViewMode = 'focus';
+      btnToggleFocus.classList.add('active');
+      if (btnToggleKanban) btnToggleKanban.classList.remove('active');
+      if (btnToggleTable) btnToggleTable.classList.remove('active');
+      if (btnToggleTrash) btnToggleTrash.classList.remove('active');
+      renderCurrentViewMode();
+    });
+  }
+
+  if (btnExitFocus) {
+    btnExitFocus.addEventListener('click', () => {
+      state.leadViewMode = 'kanban';
+      if (btnToggleKanban) btnToggleKanban.classList.add('active');
+      if (btnToggleFocus) btnToggleFocus.classList.remove('active');
+      renderCurrentViewMode();
+    });
+  }
+
+  if (btnFilterOpenNow) {
+    btnFilterOpenNow.addEventListener('click', () => {
+      state.onlyOpenNow = !state.onlyOpenNow;
+      btnFilterOpenNow.classList.toggle('active', state.onlyOpenNow);
+      const dot = document.getElementById('filter-open-dot');
+      if (dot) dot.classList.toggle('active-open', state.onlyOpenNow);
+      loadPipelineBoard();
+    });
+  }
+
+  if (tagFilterSelect) {
+    tagFilterSelect.addEventListener('change', (e) => {
+      state.tagFilter = e.target.value;
+      loadPipelineBoard();
     });
   }
 
@@ -1429,6 +1742,7 @@ document.addEventListener('DOMContentLoaded', () => {
       btnToggleTrash.classList.add('active');
       if (btnToggleKanban) btnToggleKanban.classList.remove('active');
       if (btnToggleTable) btnToggleTable.classList.remove('active');
+      if (btnToggleFocus) btnToggleFocus.classList.remove('active');
       await loadTrashCount();
       renderCurrentViewMode();
     });
@@ -1814,17 +2128,20 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         const res = await fetch('/api/v1/geo/jobs/active');
         if (!res.ok) return;
-        const job = await res.json();
+        const data = await res.json();
+        const job = data.job || data;
+        const status = job.status || data.status;
+        const progress = job.progress_pct !== undefined ? job.progress_pct : (data.progress_pct || 0);
 
-        if (telemetryNewLeads) telemetryNewLeads.textContent = job.new_leads_found || 0;
-        if (telemetryDups) telemetryDups.textContent = job.duplicates_filtered || 0;
-        if (telemetryProgressBar) telemetryProgressBar.style.width = `${job.progress_pct || 0}%`;
-        if (telemetryProgressPct) telemetryProgressPct.textContent = `${job.progress_pct || 0}%`;
+        if (telemetryNewLeads) telemetryNewLeads.textContent = job.leads_saved !== undefined ? job.leads_saved : (data.new_leads_found || 0);
+        if (telemetryDups) telemetryDups.textContent = job.leads_skipped !== undefined ? job.leads_skipped : (data.duplicates_filtered || 0);
+        if (telemetryProgressBar) telemetryProgressBar.style.width = `${progress}%`;
+        if (telemetryProgressPct) telemetryProgressPct.textContent = `${progress}%`;
 
-        if (job.status === 'COMPLETED' || job.status === 'IDLE' || job.progress_pct >= 100) {
+        if (status === 'COMPLETED' || status === 'IDLE' || status === 'FAILED' || progress >= 100 || !data.has_active_job) {
           resetSweepControls();
           if (telemetryStatus) {
-            telemetryStatus.textContent = 'Completado';
+            telemetryStatus.textContent = status === 'FAILED' ? 'Finalizado' : 'Completado';
             telemetryStatus.style.color = '#81c784';
           }
           loadMapMarkers();
@@ -1834,6 +2151,233 @@ document.addEventListener('DOMContentLoaded', () => {
         console.error('[Sweep] Error polling:', e);
       }
     }, 1500);
+  }
+
+  // ============================================================================
+  // FASE 7: DYNAMIC GEO-SEARCH, LIVE SSE STREAM & DIAGNOSTICS SELF-CHECK
+  // ============================================================================
+  const btnRunSearch = document.getElementById('btn-run-search');
+  const inputSearchLocation = document.getElementById('input-search-location');
+  const inputSearchCategory = document.getElementById('input-search-category');
+  const selectSearchLimit = document.getElementById('select-search-limit');
+  const btnEmptyGoSearch = document.getElementById('btn-empty-go-search');
+
+  if (btnEmptyGoSearch) {
+    btnEmptyGoSearch.addEventListener('click', () => {
+      switchView('map');
+      if (inputSearchCategory) inputSearchCategory.focus();
+    });
+  }
+
+  async function triggerDynamicSearch() {
+    const loc = (inputSearchLocation ? inputSearchLocation.value : '').trim() || 'Tijuana';
+    const cat = (inputSearchCategory ? inputSearchCategory.value : '').trim() || 'Dentistas';
+    const limit = selectSearchLimit ? parseInt(selectSearchLimit.value, 10) : 10;
+
+    if (btnRunSearch) {
+      btnRunSearch.disabled = true;
+      btnRunSearch.textContent = 'Buscando en vivo...';
+    }
+
+    if (telemetryStatus) {
+      telemetryStatus.textContent = `Buscando ${cat} en ${loc}...`;
+      telemetryStatus.style.color = '#81c784';
+    }
+
+    try {
+      // 1. Geocode location if provided and map is ready
+      if (loc && state.mapInstance) {
+        try {
+          const geoRes = await fetch(`/api/v1/geo/geocode?q=${encodeURIComponent(loc)}`);
+          if (geoRes.ok) {
+            const geoData = await geoRes.json();
+            if (geoData.center) {
+              state.mapInstance.flyTo([geoData.center.lat, geoData.center.lon], 13);
+              if (geoData.bbox && state.mapPolygonsLayer) {
+                state.mapPolygonsLayer.clearLayers();
+                const bounds = [
+                  [geoData.bbox.min_lat, geoData.bbox.min_lon],
+                  [geoData.bbox.max_lat, geoData.bbox.max_lon]
+                ];
+                L.rectangle(bounds, { color: '#60a5fa', weight: 1, dashArray: '4, 4', fill: false }).addTo(state.mapPolygonsLayer);
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[Geocode] Fallback a bounds por defecto:', e);
+        }
+      }
+
+      // 2. Trigger Sweep Job
+      const sweepRes = await fetch('/api/v1/geo/sweep', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          location_query: loc,
+          query_term: cat,
+          max_results: limit
+        })
+      });
+
+      if (sweepRes.ok) {
+        const sweepData = await sweepRes.json();
+        state.activeSweepJobId = sweepData.job_id;
+        startPollingSweepJob();
+      }
+    } catch (err) {
+      console.error('[DynamicSearch] Error en barrido:', err);
+    } finally {
+      if (btnRunSearch) {
+        btnRunSearch.disabled = false;
+        btnRunSearch.innerHTML = '<svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-search"/></svg> Buscar / Iniciar Barrido';
+      }
+    }
+  }
+
+  if (btnRunSearch) {
+    btnRunSearch.addEventListener('click', triggerDynamicSearch);
+  }
+  if (inputSearchLocation) {
+    inputSearchLocation.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') triggerDynamicSearch();
+    });
+  }
+  if (inputSearchCategory) {
+    inputSearchCategory.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') triggerDynamicSearch();
+    });
+  }
+
+  // Live SSE Stream
+  function initEventStream() {
+    try {
+      const evtSource = new EventSource('/api/v1/stream/events');
+      evtSource.onmessage = (e) => {
+        try {
+          const payload = JSON.parse(e.data);
+          if (payload.type === 'lead_captured') {
+            const lead = payload.data;
+            const exists = state.leads.some(l => l.id === lead.id);
+            if (!exists) {
+              state.leads.unshift(lead);
+              if (leadsEmptyState) leadsEmptyState.style.display = 'none';
+              loadPipelineBoard();
+              if (state.mapInstance && state.mapMarkersLayer && lead.lat && lead.lon) {
+                const color = lead.score >= 70 ? '#81c784' : (lead.score >= 40 ? '#ffb74d' : '#b0bec5');
+                const marker = L.circleMarker([lead.lat, lead.lon], {
+                  radius: 7,
+                  fillColor: color,
+                  color: '#ffffff',
+                  weight: 1.5,
+                  opacity: 1,
+                  fillOpacity: 0.85
+                });
+                const popupContent = `
+                  <div class="map-popup-title">${escapeHtml(lead.name)}</div>
+                  <div class="map-popup-meta">${escapeHtml(lead.category || '')} &bull; Fase: ${escapeHtml(lead.stage || 'Calificado')}</div>
+                  <div>Probabilidad de Exito: <span class="map-popup-score">${lead.score || 0}%</span></div>
+                  ${lead.whatsapp_url ? `<a href="${lead.whatsapp_url}" target="_blank" class="map-popup-btn">Contactar WhatsApp</a>` : ''}
+                `;
+                marker.bindPopup(popupContent);
+                state.mapMarkersLayer.addLayer(marker);
+              }
+            }
+          } else if (payload.type === 'status_update') {
+            if (telemetryStatus) {
+              telemetryStatus.textContent = payload.data.step || 'Procesando...';
+              telemetryStatus.style.color = '#81c784';
+            }
+          }
+        } catch (err) {
+          // keep-alive or raw comment
+        }
+      };
+      evtSource.onerror = () => {
+        // SSE reconnects automatically
+      };
+    } catch (err) {
+      console.warn('[SSE] EventSource init failed:', err);
+    }
+  }
+
+  // Diagnostics Health-Check Runner
+  const btnRunDiagnostics = document.getElementById('btn-run-diagnostics');
+  async function runDiagnosticsCheck() {
+    if (!btnRunDiagnostics) return;
+    btnRunDiagnostics.disabled = true;
+    btnRunDiagnostics.innerHTML = '<svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-refresh"/></svg> Verificando componentes...';
+
+    try {
+      const res = await fetch('/api/v1/diagnostics/health-check');
+      if (!res.ok) return;
+      const data = await res.json();
+      const s = data.services || {};
+
+      // PostgreSQL
+      const elPgBadge = document.getElementById('diag-badge-postgres');
+      const elPgMeta = document.getElementById('diag-meta-postgres');
+      if (elPgBadge && s.postgres) {
+        elPgBadge.className = `diag-badge ${s.postgres.status === 'OK' ? 'ok' : 'error'}`;
+        elPgBadge.textContent = s.postgres.status;
+        elPgMeta.textContent = `Respuesta: ${s.postgres.latency_ms}ms | Leads activos: ${s.postgres.active_leads_count}`;
+      }
+
+      // Redis
+      const elRdBadge = document.getElementById('diag-badge-redis');
+      const elRdMeta = document.getElementById('diag-meta-redis');
+      if (elRdBadge && s.redis) {
+        elRdBadge.className = `diag-badge ${s.redis.status === 'OK' ? 'ok' : 'error'}`;
+        elRdBadge.textContent = s.redis.status;
+        elRdMeta.textContent = `Respuesta: ${s.redis.latency_ms}ms | Tareas en cola: ${s.redis.pending_jobs_queue}`;
+      }
+
+      // Chromium
+      const elCrBadge = document.getElementById('diag-badge-chromium');
+      const elCrMeta = document.getElementById('diag-meta-chromium');
+      if (elCrBadge && s.chromium_headless) {
+        elCrBadge.className = `diag-badge ${s.chromium_headless.status === 'OK' ? 'ok' : 'warn'}`;
+        elCrBadge.textContent = s.chromium_headless.status;
+        elCrMeta.textContent = `Inicializacion: ${s.chromium_headless.execution_ms}ms | ${s.chromium_headless.sandbox}`;
+      }
+
+      // Nominatim
+      const elNomBadge = document.getElementById('diag-badge-nominatim');
+      const elNomMeta = document.getElementById('diag-meta-nominatim');
+      if (elNomBadge && s.nominatim_api) {
+        elNomBadge.className = `diag-badge ${s.nominatim_api.status === 'OK' ? 'ok' : 'warn'}`;
+        elNomBadge.textContent = s.nominatim_api.status;
+        elNomMeta.textContent = `Respuesta: ${s.nominatim_api.latency_ms}ms | Geocodificacion Activa`;
+      }
+
+      // Overpass
+      const elOverBadge = document.getElementById('diag-badge-overpass');
+      const elOverMeta = document.getElementById('diag-meta-overpass');
+      if (elOverBadge && s.overpass_api) {
+        elOverBadge.className = `diag-badge ${s.overpass_api.status === 'OK' ? 'ok' : 'warn'}`;
+        elOverBadge.textContent = s.overpass_api.status;
+        elOverMeta.textContent = s.overpass_api.latency_ms ? `Respuesta: ${s.overpass_api.latency_ms}ms` : 'Operativo (Rotacion de espejos)';
+      }
+
+      // Google Maps
+      const elGmBadge = document.getElementById('diag-badge-gmaps');
+      const elGmMeta = document.getElementById('diag-meta-gmaps');
+      if (elGmBadge && s.google_maps) {
+        elGmBadge.className = `diag-badge ${s.google_maps.status === 'OK' ? 'ok' : 'warn'}`;
+        elGmBadge.textContent = s.google_maps.status;
+        elGmMeta.textContent = `Respuesta: ${s.google_maps.latency_ms}ms | Conectividad Directa`;
+      }
+    } catch (e) {
+      console.error('[Diagnostics] Error al verificar componentes:', e);
+    } finally {
+      if (btnRunDiagnostics) {
+        btnRunDiagnostics.disabled = false;
+        btnRunDiagnostics.innerHTML = '<svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-activity"/></svg> Ejecutar Diagnostico del Sistema';
+      }
+    }
+  }
+
+  if (btnRunDiagnostics) {
+    btnRunDiagnostics.addEventListener('click', runDiagnosticsCheck);
   }
 
   // ============================================================================
@@ -2387,7 +2931,7 @@ document.addEventListener('DOMContentLoaded', () => {
     {
       targetId: 'top-btn-new-lead',
       title: 'Registro de Prospectos & Deduplicacion',
-      text: 'Ingresa prospectos manuales con deteccion instantanea de duplicados por telefono E.164, dominio normalizado y ubicacion.'
+      text: 'Ingresa prospectos manuales con deteccion instantanea de duplicados por telefono verificado, pagina web y ubicacion.'
     },
     {
       targetId: 'nav-btn-calendar',
@@ -2401,8 +2945,8 @@ document.addEventListener('DOMContentLoaded', () => {
     },
     {
       targetId: 'nav-btn-settings',
-      title: 'Ajustes Modulares & Seguridad Argon2id',
-      text: 'Personaliza los 8 modulos de operacion, calibra los pesos predictivos de auditoria y protege el acceso en tu red local.'
+      title: 'Ajustes Modulares & Seguridad Local',
+      text: 'Personaliza los modulos de operacion, calibra los pesos predictivos de auditoria y protege el acceso en tu red local.'
     }
   ];
 
@@ -2601,9 +3145,2181 @@ document.addEventListener('DOMContentLoaded', () => {
     return `${y}-${m}-${d}T${h}:${min}`;
   }
 
+  // ============================================================================
+  // FASE 8: HERRAMIENTAS DE VELOCIDAD COMERCIAL Y CREATIVIDAD
+  // ============================================================================
+
+  // 1. Toast Notification Helper
+  function showCommercialToast(message) {
+    const existing = document.querySelector('.commercial-toast');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.className = 'commercial-toast';
+    toast.innerHTML = `
+      <svg style="width:14px;height:14px;color:#7da382;" stroke="currentColor" fill="none"><use href="#icon-check"/></svg>
+      <span>${escapeHtml(message)}</span>
+    `;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transition = 'opacity 0.3s ease';
+      setTimeout(() => toast.remove(), 300);
+    }, 2400);
+  }
+
+  // 2. Commercial Pitch 1-Click Copy
+  async function copyCommercialPitch(lead) {
+    if (!lead) return;
+    let pitch = lead.commercial_pitch;
+    if (!pitch) {
+      try {
+        const res = await fetch(`/api/v1/leads/${lead.id}/pitch`);
+        if (res.ok) {
+          const data = await res.json();
+          pitch = data.pitch;
+          lead.commercial_pitch = pitch;
+        }
+      } catch (e) {
+        console.error('[Pitch] Error:', e);
+      }
+    }
+    if (!pitch) {
+      pitch = `Hola, me comunico con relación a mejoras en la presencia digital y velocidad de ${lead.name} en Tijuana para captar más clientes que buscan en internet.`;
+    }
+    navigator.clipboard.writeText(pitch).then(() => {
+      showCommercialToast('Resumen comercial copiado al portapapeles');
+    }).catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = pitch;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+      showCommercialToast('Resumen comercial copiado al portapapeles');
+    });
+  }
+
+  // 3. Modo Enfoque (Focus Mode / Rafaga de Contacto Comercial)
+  function getFocusLeads() {
+    let list = (state.leads || []).filter(l => !l.is_deleted);
+    if (state.activeCategory) {
+      list = list.filter(l => l.category_slug === state.activeCategory || l.primary_category === state.activeCategory);
+    }
+    if (state.onlyOpenNow) {
+      list = list.filter(l => l.is_open_now === true);
+    }
+    if (state.tagFilter) {
+      list = list.filter(l => Array.isArray(l.tags) && l.tags.includes(state.tagFilter));
+    }
+    list.sort((a, b) => (b.acceptance_probability_pct || 0) - (a.acceptance_probability_pct || 0));
+    return list;
+  }
+
+  function renderFocusMode() {
+    const focusContainer = document.getElementById('focus-card-wrapper');
+    const curNum = document.getElementById('focus-current-num');
+    const totNum = document.getElementById('focus-total-num');
+    const progBar = document.getElementById('focus-progress-bar');
+    if (!focusContainer) return;
+
+    const focusList = getFocusLeads();
+    if (focusList.length === 0) {
+      if (curNum) curNum.textContent = '0';
+      if (totNum) totNum.textContent = '0';
+      if (progBar) progBar.style.width = '0%';
+      focusContainer.innerHTML = `
+        <div style="text-align: center; padding: 48px 16px; color: var(--text-muted); background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md);">
+          <div style="font-size: 14px; font-weight: 600; color: var(--text-main); margin-bottom: 6px;">No hay prospectos en esta seleccion</div>
+          <p style="font-size: 12px; color: var(--text-secondary);">Cambia los filtros de categoria o desactiva "Solo abiertos ahora" para continuar la prospeccion.</p>
+        </div>
+      `;
+      return;
+    }
+
+    if (state.focusIndex >= focusList.length) state.focusIndex = 0;
+    if (state.focusIndex < 0) state.focusIndex = focusList.length - 1;
+
+    const lead = focusList[state.focusIndex];
+    state.selectedLead = lead;
+
+    if (curNum) curNum.textContent = state.focusIndex + 1;
+    if (totNum) totNum.textContent = focusList.length;
+    if (progBar) progBar.style.width = `${((state.focusIndex + 1) / focusList.length) * 100}%`;
+
+    const prob = Math.round(lead.acceptance_probability_pct || 0);
+    const cleanPhone = (lead.phone_e164 || lead.phone_raw || '').replace(/[^0-9]/g, '');
+    const waMsg = (state.settings.whatsapp_template || 'Hola, buen dia.').replace(/{nombre}/g, lead.name);
+    const waUrl = cleanPhone.length >= 10 ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(waMsg)}` : null;
+
+    const openCls = lead.is_open_now ? 'open' : 'closed';
+    const openLbl = lead.open_status_label || (lead.is_open_now ? 'Abierto ahora' : 'Cerrado en este momento');
+
+    // Flaws
+    const flawBadges = (Array.isArray(lead.sales_arguments) ? lead.sales_arguments : []).slice(0, 3).map(arg => `
+      <span class="focus-flaw-badge">${escapeHtml(arg)}</span>
+    `).join('');
+
+    focusContainer.innerHTML = `
+      <div class="focus-lead-card">
+        <div class="focus-lead-top">
+          <div>
+            <div class="focus-lead-name">${escapeHtml(lead.name)}</div>
+            <div class="focus-lead-meta">
+              <span>${escapeHtml(lead.primary_category || lead.category_slug)}</span>
+              <span>&bull;</span>
+              <span>${escapeHtml(lead.address_raw || 'Tijuana, BC')}</span>
+              <span>&bull;</span>
+              <span>${escapeHtml(lead.phone_e164 || lead.phone_raw || 'Sin telefono')}</span>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+            <span class="opening-status-badge ${openCls}">${escapeHtml(openLbl)}</span>
+            <span class="score-badge ${prob >= 70 ? 'high' : (prob >= 40 ? 'med' : 'low')}" style="font-size: 13px; padding: 4px 10px;">${prob}% Exito</span>
+          </div>
+        </div>
+
+        ${flawBadges ? `<div class="focus-diagnostic-badges">${flawBadges}</div>` : ''}
+
+        <div class="focus-pitch-box">
+          <div class="focus-pitch-header">
+            <span>Diagnostico Comercial Sin Tecnicismos</span>
+            <button class="btn-secondary-action" id="focus-btn-copy-pitch" style="height: 22px; font-size: 10px; padding: 0 6px;">
+              <svg style="width:10px;height:10px;" stroke="currentColor" fill="none"><use href="#icon-copy"/></svg>
+              Copiar (C)
+            </button>
+          </div>
+          <div>${escapeHtml(lead.commercial_pitch || 'Analizando negocio para generar propuesta comercial adaptada...')}</div>
+        </div>
+
+        <div class="focus-contact-actions">
+          ${lead.has_whatsapp !== false && waUrl ? `
+            <a href="${escapeHtml(waUrl)}" target="_blank" rel="noopener noreferrer" class="btn-focus-big btn-focus-whatsapp" id="focus-btn-wa">
+              <svg style="width:16px;height:16px;" stroke="currentColor" fill="none"><use href="#icon-message-circle"/></svg>
+              Contactar WhatsApp (W)
+            </a>
+          ` : `
+            <button class="btn-focus-big disabled" style="background:var(--bg-subtle); color:var(--text-muted); cursor:not-allowed;">
+              Sin WhatsApp disponible
+            </button>
+          `}
+
+          ${cleanPhone.length >= 10 ? `
+            <a href="tel:+${cleanPhone}" class="btn-focus-big btn-focus-call" id="focus-btn-call">
+              <svg style="width:15px;height:15px;" stroke="currentColor" fill="none"><use href="#icon-phone"/></svg>
+              Llamar
+            </a>
+          ` : `
+            <button class="btn-focus-big disabled" style="background:var(--bg-subtle); color:var(--text-muted); cursor:not-allowed;">Sin tel</button>
+          `}
+
+          <button class="btn-focus-big" id="focus-btn-view-drawer" style="background:var(--bg-subtle); color:var(--text-main);">
+            Ver Ficha
+          </button>
+        </div>
+
+        <div class="focus-rapid-actions">
+          <button class="btn-rapid-action btn-rapid-contacted" id="focus-btn-contacted" title="Avanza a Primer Contacto y pasa al siguiente lead">
+            <svg style="width:14px;height:14px;" stroke="currentColor" fill="none"><use href="#icon-check"/></svg>
+            Ya lo contacte (1)
+          </button>
+          <button class="btn-rapid-action btn-rapid-no-wa" id="focus-btn-no-wa" title="Marca permanentemente sin WhatsApp y salta al siguiente lead">
+            Sin WhatsApp / Saltar (2)
+          </button>
+          <button class="btn-rapid-action btn-rapid-discard" id="focus-btn-discard" title="Descartar prospecto y pasar al siguiente lead">
+            <svg style="width:14px;height:14px;" stroke="currentColor" fill="none"><use href="#icon-x"/></svg>
+            Descartar (3)
+          </button>
+        </div>
+
+        <div class="focus-nav-row">
+          <button class="btn-secondary-action" id="focus-btn-prev" style="height: 26px; font-size: 11px;">
+            &larr; Anterior (K)
+          </button>
+          <span>Usa las teclas <strong>J</strong> y <strong>K</strong> para navegar</span>
+          <button class="btn-secondary-action" id="focus-btn-next" style="height: 26px; font-size: 11px;">
+            Siguiente (J) &rarr;
+          </button>
+        </div>
+      </div>
+    `;
+
+    // Wire listeners
+    const btnCopy = document.getElementById('focus-btn-copy-pitch');
+    if (btnCopy) btnCopy.addEventListener('click', () => copyCommercialPitch(lead));
+
+    const btnWa = document.getElementById('focus-btn-wa');
+    if (btnWa) {
+      btnWa.addEventListener('click', async () => {
+        await logInteraction(lead.id, 'WHATSAPP', 'Contacto iniciado desde Modo Enfoque');
+      });
+    }
+
+    const btnCall = document.getElementById('focus-btn-call');
+    if (btnCall) {
+      btnCall.addEventListener('click', async () => {
+        await logInteraction(lead.id, 'LLAMADA', 'Llamada iniciada desde Modo Enfoque');
+      });
+    }
+
+    const btnDrawer = document.getElementById('focus-btn-view-drawer');
+    if (btnDrawer) btnDrawer.addEventListener('click', () => openLeadDrawer(lead));
+
+    const btnContacted = document.getElementById('focus-btn-contacted');
+    if (btnContacted) btnContacted.addEventListener('click', () => handleFocusContacted(lead));
+
+    const btnNoWa = document.getElementById('focus-btn-no-wa');
+    if (btnNoWa) btnNoWa.addEventListener('click', () => handleFocusNoWa(lead));
+
+    const btnDiscard = document.getElementById('focus-btn-discard');
+    if (btnDiscard) btnDiscard.addEventListener('click', () => handleFocusDiscard(lead));
+
+    const btnPrev = document.getElementById('focus-btn-prev');
+    if (btnPrev) btnPrev.addEventListener('click', () => { state.focusIndex--; renderFocusMode(); });
+
+    const btnNext = document.getElementById('focus-btn-next');
+    if (btnNext) btnNext.addEventListener('click', () => { state.focusIndex++; renderFocusMode(); });
+  }
+
+  async function handleFocusContacted(lead) {
+    try {
+      await fetch(`/api/v1/pipeline/leads/${lead.id}/transition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stage: 'FIRST_CONTACT', notes: 'Marcado como contactado desde Modo Enfoque' })
+      });
+      await logInteraction(lead.id, 'SEGUIMIENTO', 'Transicion rapida a Primer Contacto');
+      lead.lifecycle_stage = 'FIRST_CONTACT';
+      showCommercialToast('Avanzado a Primer Contacto');
+      state.focusIndex++;
+      renderFocusMode();
+    } catch (e) {
+      console.error('[Focus] Error contacted:', e);
+      state.focusIndex++;
+      renderFocusMode();
+    }
+  }
+
+  async function handleFocusNoWa(lead) {
+    try {
+      await fetch(`/api/v1/leads/${lead.id}/mark-no-whatsapp`, { method: 'POST' });
+      lead.has_whatsapp = false;
+      showCommercialToast('Marcado sin WhatsApp');
+      state.focusIndex++;
+      renderFocusMode();
+    } catch (e) {
+      console.error('[Focus] Error no-wa:', e);
+      state.focusIndex++;
+      renderFocusMode();
+    }
+  }
+
+  async function handleFocusDiscard(lead) {
+    try {
+      await fetch(`/api/v1/pipeline/leads/${lead.id}/transition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stage: 'CLOSED_LOST', loss_reason: 'Descartado en prospeccion rapida', notes: 'Descartado desde Modo Enfoque' })
+      });
+      lead.lifecycle_stage = 'CLOSED_LOST';
+      showCommercialToast('Prospecto descartado');
+      state.focusIndex++;
+      renderFocusMode();
+    } catch (e) {
+      console.error('[Focus] Error discard:', e);
+      state.focusIndex++;
+      renderFocusMode();
+    }
+  }
+
+  // 4. Buscador Global Rapido (Ctrl + K)
+  const modalGlobalSearch = document.getElementById('modal-global-search');
+  const globalSearchInput = document.getElementById('global-search-input');
+  const globalSearchResults = document.getElementById('global-search-results');
+  const modalGlobalSearchClose = document.getElementById('modal-global-search-close');
+  let searchDebounceTimeout = null;
+
+  function openGlobalSearch() {
+    if (!modalGlobalSearch) return;
+    modalGlobalSearch.style.display = 'flex';
+    if (globalSearchInput) {
+      globalSearchInput.value = '';
+      globalSearchInput.focus();
+    }
+    state.globalSearchResults = [];
+    state.selectedGlobalSearchIndex = 0;
+    if (globalSearchResults) {
+      globalSearchResults.innerHTML = `
+        <div style="padding: 24px 16px; text-align: center; color: var(--text-muted); font-size: 12px;">
+          Escribe para buscar prospectos al instante en Tijuana...
+        </div>
+      `;
+    }
+  }
+
+  function closeGlobalSearch() {
+    if (modalGlobalSearch) modalGlobalSearch.style.display = 'none';
+  }
+
+  if (modalGlobalSearchClose) {
+    modalGlobalSearchClose.addEventListener('click', closeGlobalSearch);
+  }
+
+  if (modalGlobalSearch) {
+    modalGlobalSearch.addEventListener('click', (e) => {
+      if (e.target === modalGlobalSearch) closeGlobalSearch();
+    });
+  }
+
+  if (globalSearchInput) {
+    globalSearchInput.addEventListener('input', (e) => {
+      clearTimeout(searchDebounceTimeout);
+      const q = e.target.value.trim();
+      if (!q) {
+        if (globalSearchResults) {
+          globalSearchResults.innerHTML = `
+            <div style="padding: 24px 16px; text-align: center; color: var(--text-muted); font-size: 12px;">
+              Escribe para buscar prospectos al instante en Tijuana...
+            </div>
+          `;
+        }
+        return;
+      }
+      searchDebounceTimeout = setTimeout(async () => {
+        try {
+          const res = await fetch(`/api/v1/leads/search/global?q=${encodeURIComponent(q)}`);
+          if (res.ok) {
+            const results = await res.json();
+            state.globalSearchResults = results;
+            state.selectedGlobalSearchIndex = 0;
+            renderGlobalSearchResults(results);
+          }
+        } catch (err) {
+          console.error('[Search] Error:', err);
+        }
+      }, 180);
+    });
+
+    globalSearchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeGlobalSearch();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (state.globalSearchResults.length > 0) {
+          state.selectedGlobalSearchIndex = (state.selectedGlobalSearchIndex + 1) % state.globalSearchResults.length;
+          highlightSelectedSearchResult();
+        }
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (state.globalSearchResults.length > 0) {
+          state.selectedGlobalSearchIndex = (state.selectedGlobalSearchIndex - 1 + state.globalSearchResults.length) % state.globalSearchResults.length;
+          highlightSelectedSearchResult();
+        }
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (state.globalSearchResults.length > 0 && state.globalSearchResults[state.selectedGlobalSearchIndex]) {
+          const selected = state.globalSearchResults[state.selectedGlobalSearchIndex];
+          closeGlobalSearch();
+          openLeadDrawer(selected);
+        }
+      }
+    });
+  }
+
+  function renderGlobalSearchResults(results) {
+    if (!globalSearchResults) return;
+    if (results.length === 0) {
+      globalSearchResults.innerHTML = `
+        <div style="padding: 24px 16px; text-align: center; color: var(--text-muted); font-size: 12px;">
+          No se encontraron prospectos coincidentes en Tijuana.
+        </div>
+      `;
+      return;
+    }
+
+    globalSearchResults.innerHTML = results.map((l, idx) => {
+      const prob = Math.round(l.acceptance_probability_pct || 0);
+      const isSel = idx === state.selectedGlobalSearchIndex ? 'selected' : '';
+      const tagsHtml = (Array.isArray(l.tags) ? l.tags : []).slice(0, 2).map(t => `<span class="tag-chip" style="font-size:9px; padding:1px 4px;">${escapeHtml(t)}</span>`).join('');
+      return `
+        <div class="global-search-item ${isSel}" data-index="${idx}" data-lead-id="${l.id}">
+          <div class="global-search-item-info">
+            <div class="global-search-item-name">${escapeHtml(l.name)}</div>
+            <div class="global-search-item-meta">
+              <span>${escapeHtml(l.primary_category || l.category_slug)}</span>
+              <span>&bull;</span>
+              <span>${escapeHtml(l.phone_e164 || l.phone_raw || 'Sin tel')}</span>
+              <span>&bull;</span>
+              <span>${escapeHtml(l.address_raw || 'Tijuana')}</span>
+              ${tagsHtml}
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="score-badge ${prob >= 70 ? 'high' : (prob >= 40 ? 'med' : 'low')}">${prob}%</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    globalSearchResults.querySelectorAll('.global-search-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const idx = parseInt(el.dataset.index, 10);
+        const selected = results[idx];
+        if (selected) {
+          closeGlobalSearch();
+          openLeadDrawer(selected);
+        }
+      });
+    });
+  }
+
+  function highlightSelectedSearchResult() {
+    if (!globalSearchResults) return;
+    globalSearchResults.querySelectorAll('.global-search-item').forEach((el, idx) => {
+      el.classList.toggle('selected', idx === state.selectedGlobalSearchIndex);
+      if (idx === state.selectedGlobalSearchIndex) {
+        el.scrollIntoView({ block: 'nearest' });
+      }
+    });
+  }
+
+  // 5. Tags Management
+  function renderDrawerTags(lead) {
+    const container = document.getElementById('drawer-tags-container');
+    const inputTag = document.getElementById('input-drawer-tag');
+    const btnAddTag = document.getElementById('btn-add-drawer-tag');
+    if (!container) return;
+
+    const tags = Array.isArray(lead.tags) ? lead.tags : [];
+    container.innerHTML = tags.map(t => `
+      <span class="tag-chip">
+        <span>${escapeHtml(t)}</span>
+        <span class="tag-chip-remove" data-tag="${escapeHtml(t)}">&times;</span>
+      </span>
+    `).join('');
+
+    container.querySelectorAll('.tag-chip-remove').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const tagToRemove = btn.dataset.tag;
+        const newTags = tags.filter(x => x !== tagToRemove);
+        await saveLeadTags(lead.id, newTags);
+        lead.tags = newTags;
+        renderDrawerTags(lead);
+        loadPipelineBoard();
+      });
+    });
+
+    const handleAdd = async () => {
+      const val = inputTag?.value.trim();
+      if (!val) return;
+      if (!tags.includes(val)) {
+        const newTags = [...tags, val];
+        await saveLeadTags(lead.id, newTags);
+        lead.tags = newTags;
+        if (inputTag) inputTag.value = '';
+        renderDrawerTags(lead);
+        loadPipelineBoard();
+      }
+    };
+
+    if (btnAddTag) btnAddTag.onclick = handleAdd;
+    if (inputTag) {
+      inputTag.onkeydown = (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          handleAdd();
+        }
+      };
+    }
+  }
+
+  async function saveLeadTags(leadId, tags) {
+    try {
+      await fetch(`/api/v1/leads/${leadId}/tags`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tags })
+      });
+      showCommercialToast('Etiquetas actualizadas');
+    } catch (e) {
+      console.error('[Tags] Error:', e);
+    }
+  }
+
+  // 6. Cotizador Express
+  function initDrawerQuote(lead) {
+    const checkboxes = document.querySelectorAll('.quote-pkg-checkbox');
+    const customInput = document.getElementById('quote-custom-amount');
+    const totalDisplay = document.getElementById('quote-total-display');
+    const btnSaveQuote = document.getElementById('btn-save-quote');
+    const btnCopyProposal = document.getElementById('btn-copy-quote-proposal');
+
+    checkboxes.forEach(cb => { cb.checked = false; });
+    if (customInput) customInput.value = lead.deal_value_estimated ? Math.round(lead.deal_value_estimated) : '';
+
+    function recalculate() {
+      let sum = 0;
+      checkboxes.forEach(cb => {
+        if (cb.checked) sum += parseFloat(cb.dataset.price || 0);
+      });
+      const customVal = customInput && customInput.value ? parseFloat(customInput.value) : 0;
+      const total = customVal > 0 ? customVal : sum;
+      if (totalDisplay) totalDisplay.textContent = `$${total.toLocaleString('es-MX')} MXN`;
+      return total;
+    }
+
+    checkboxes.forEach(cb => {
+      cb.onchange = recalculate;
+    });
+    if (customInput) customInput.oninput = recalculate;
+    recalculate();
+
+    if (btnSaveQuote) {
+      btnSaveQuote.onclick = async () => {
+        const total = recalculate();
+        const propService = document.getElementById('quote-proposal-service');
+        const propCurrency = document.getElementById('quote-proposal-currency');
+        const propNotes = document.getElementById('quote-proposal-notes');
+
+        const serviceVal = propService ? propService.value.trim() : '';
+        const currencyVal = propCurrency ? propCurrency.value : 'MXN';
+        const notesVal = propNotes ? propNotes.value.trim() : '';
+
+        try {
+          await fetch(`/api/v1/leads/${lead.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              deal_value_estimated: total,
+              proposal_service: serviceVal || 'Servicio Digital',
+              proposal_currency: currencyVal,
+              proposal_notes: notesVal
+            })
+          });
+          lead.deal_value_estimated = total;
+          lead.proposal_service = serviceVal || 'Servicio Digital';
+          lead.proposal_currency = currencyVal;
+          lead.proposal_notes = notesVal;
+
+          recordDailyAction('proposal');
+          showCommercialToast(`Propuesta comercial de $${total.toLocaleString('es-MX')} ${currencyVal} guardada`);
+          loadPipelineBoard();
+        } catch (e) {
+          console.error('[Quote] Error:', e);
+        }
+      };
+    }
+
+    // 1-Click Printable Proposal Sheet (Creative Freedom 2)
+    const btnPrintSheet = document.getElementById('btn-print-proposal-sheet');
+    if (btnPrintSheet) {
+      btnPrintSheet.onclick = () => {
+        const total = recalculate();
+        const propService = document.getElementById('quote-proposal-service');
+        const propCurrency = document.getElementById('quote-proposal-currency');
+        const propNotes = document.getElementById('quote-proposal-notes');
+
+        const serviceVal = propService ? propService.value.trim() : (lead.proposal_service || 'Digitalizacion Comercial');
+        const currencyVal = propCurrency ? propCurrency.value : (lead.proposal_currency || 'MXN');
+        const notesVal = propNotes ? propNotes.value.trim() : (lead.proposal_notes || 'Implementacion de presencia local, conversion y optimizacion web.');
+
+        const argsList = Array.isArray(lead.sales_arguments) ? lead.sales_arguments : [];
+        const healthScore = Math.round(lead.technical_health_score || 0);
+
+        const printContainer = document.getElementById('printable-proposal-report');
+        if (printContainer) {
+          printContainer.innerHTML = `
+            <div class="printable-header">
+              <div>
+                <div class="printable-title">PROPUESTA COMERCIAL Y DIAGNOSTICO DIGITAL</div>
+                <div style="font-size:12px; color:#4b5563; margin-top:4px;">
+                  Tijuana, Baja California &bull; Preparado para: <strong>${escapeHtml(lead.name)}</strong>
+                </div>
+              </div>
+              <div style="text-align:right; font-size:11px; color:#6b7280;">
+                Fecha: ${new Date().toLocaleDateString('es-MX', { year:'numeric', month:'long', day:'numeric' })}
+              </div>
+            </div>
+
+            <div class="printable-section">
+              <div class="printable-section-title">1. Diagnostico de Presencia Tecnica y Web</div>
+              <div style="font-size:12px; line-height:1.5;">
+                <p><strong>Calificacion de Salud Web:</strong> ${healthScore}/100 (${healthScore >= 70 ? 'Aceptable' : healthScore >= 40 ? 'Requiere optimizacion' : 'Critico / Sin candado seguro'})</p>
+                <p><strong>Sitio Web:</strong> ${lead.website ? escapeHtml(lead.website) : 'No cuenta con portal dedicado activo.'}</p>
+                <p><strong>Giro / Categoria:</strong> ${escapeHtml(lead.primary_category || lead.category_slug)}</p>
+                <p><strong>Ubicacion:</strong> ${escapeHtml(lead.address_raw || 'Tijuana, BC')}</p>
+              </div>
+            </div>
+
+            <div class="printable-section">
+              <div class="printable-section-title">2. Oportunidades de Mejora Comercial Detectadas</div>
+              <ul style="font-size:12px; line-height:1.6; padding-left:18px; margin:4px 0;">
+                ${argsList.length > 0 ? argsList.map(a => `<li>${escapeHtml(a)}</li>`).join('') : '<li>Modernizacion general para captacion activa de clientes locales en Tijuana.</li>'}
+              </ul>
+            </div>
+
+            <div class="printable-section">
+              <div class="printable-section-title">3. Servicio y Alcance Propuesto</div>
+              <div style="font-size:13px; font-weight:600; color:#111827; margin-bottom:6px;">${escapeHtml(serviceVal)}</div>
+              <div style="font-size:12px; line-height:1.5; color:#374151;">${escapeHtml(notesVal)}</div>
+
+              <div class="printable-amount-box">
+                <div style="font-size:12px; color:#4b5563;">Inversion Estimada del Proyecto:</div>
+                <div style="font-size:22px; font-weight:800; color:#111827; font-family:monospace;">
+                  $${total.toLocaleString('es-MX')} ${currencyVal}
+                </div>
+                <div style="font-size:11px; color:#6b7280; margin-top:4px;">Incluye soporte tecnico y acompanamiento comercial local en Tijuana.</div>
+              </div>
+            </div>
+          `;
+          window.print();
+        }
+      };
+    }
+
+    if (btnCopyProposal) {
+      btnCopyProposal.onclick = () => {
+        const total = recalculate();
+        const selectedPkgs = Array.from(checkboxes).filter(c => c.checked).map(c => c.dataset.name);
+        const pkgText = selectedPkgs.length > 0 ? selectedPkgs.join(' + ') : 'Solución de Modernización Digital';
+        const proposal = `Hola, respecto a la modernización de ${lead.name}, le comparto la propuesta preparada: ${pkgText}. Inversión estimada: $${total.toLocaleString('es-MX')} MXN con soporte local en Tijuana. ¿Le gustaría que le comparta más detalles hoy?`;
+        navigator.clipboard.writeText(proposal).then(() => {
+          showCommercialToast('Propuesta comercial copiada al portapapeles');
+        });
+      };
+    }
+  }
+
+  // 7. Radar de Competencia Local
+  async function loadDrawerCompetitors(lead) {
+    const pctWeb = document.getElementById('radar-pct-web');
+    const pctSsl = document.getElementById('radar-pct-ssl');
+    const leverageBox = document.getElementById('radar-leverage-box');
+    const competitorsList = document.getElementById('radar-competitors-list');
+    const btnCopyRadar = document.getElementById('btn-copy-radar-pitch');
+
+    try {
+      const res = await fetch(`/api/v1/leads/${lead.id}/competitors`);
+      if (!res.ok) return;
+      const data = await res.json();
+
+      if (pctWeb) pctWeb.textContent = `${data.zone_stats.pct_with_website}%`;
+      if (pctSsl) pctSsl.textContent = `${data.zone_stats.pct_with_secure_site}%`;
+      if (leverageBox) leverageBox.textContent = data.commercial_leverage_text || 'Comparativa comercial lista.';
+
+      if (competitorsList) {
+        if (!data.competitors || data.competitors.length === 0) {
+          competitorsList.innerHTML = '<div style="font-size:11px; color:var(--text-muted);">Sin otros competidores cercanos registrados en la misma categoría.</div>';
+        } else {
+          competitorsList.innerHTML = data.competitors.map(c => `
+            <div class="radar-competitor-item">
+              <div>
+                <strong>${escapeHtml(c.name)}</strong>
+                <div style="font-size:10px; color:var(--text-muted);">${escapeHtml(c.status_summary)}</div>
+              </div>
+              <span class="score-badge ${c.health_score >= 70 ? 'high' : 'low'}">${c.health_score}/100</span>
+            </div>
+          `).join('');
+        }
+      }
+
+      if (btnCopyRadar) {
+        btnCopyRadar.onclick = () => {
+          const text = data.commercial_leverage_text || `En esta zona de Tijuana, el ${data.zone_stats.pct_with_secure_site}% de los negocios ya cuenta con presencia digital protegida.`;
+          navigator.clipboard.writeText(text).then(() => {
+            showCommercialToast('Argumento de competencia copiado al portapapeles');
+          });
+        };
+      }
+    } catch (e) {
+      console.error('[Competitors] Error:', e);
+    }
+  }
+
+  // 8. Atajos de Teclado Comerciales (Navegacion Agil / Una sola mano)
+  window.addEventListener('keydown', (e) => {
+    // Global Search toggle (Ctrl + K or Cmd + K)
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      openGlobalSearch();
+      return;
+    }
+
+    const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+    const isTyping = activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select';
+
+    if (e.key === 'Escape') {
+      if (modalGlobalSearch && modalGlobalSearch.style.display !== 'none') {
+        closeGlobalSearch();
+        return;
+      }
+      if (drawerLeadDetail && drawerLeadDetail.style.display !== 'none') {
+        drawerLeadDetail.style.display = 'none';
+        return;
+      }
+      if (state.leadViewMode === 'focus') {
+        state.leadViewMode = 'kanban';
+        if (btnToggleKanban) btnToggleKanban.classList.add('active');
+        if (btnToggleFocus) btnToggleFocus.classList.remove('active');
+        renderCurrentViewMode();
+        return;
+      }
+      return;
+    }
+
+    if (isTyping) return;
+
+    const key = e.key.toLowerCase();
+
+    // Toggle Focus Mode (F)
+    if (key === 'f') {
+      e.preventDefault();
+      if (state.leadViewMode === 'focus') {
+        state.leadViewMode = 'kanban';
+        if (btnToggleKanban) btnToggleKanban.classList.add('active');
+        if (btnToggleFocus) btnToggleFocus.classList.remove('active');
+      } else {
+        state.leadViewMode = 'focus';
+        if (btnToggleFocus) btnToggleFocus.classList.add('active');
+        if (btnToggleKanban) btnToggleKanban.classList.remove('active');
+      }
+      renderCurrentViewMode();
+      return;
+    }
+
+    // Navigation: Next (J or ArrowDown)
+    if (key === 'j' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (state.leadViewMode === 'focus') {
+        state.focusIndex++;
+        renderFocusMode();
+      }
+      return;
+    }
+
+    // Navigation: Prev (K or ArrowUp)
+    if (key === 'k' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (state.leadViewMode === 'focus') {
+        state.focusIndex--;
+        renderFocusMode();
+      }
+      return;
+    }
+
+    // WhatsApp shortcut (W)
+    if (key === 'w' && state.selectedLead) {
+      e.preventDefault();
+      const clean = (state.selectedLead.phone_e164 || state.selectedLead.phone_raw || '').replace(/[^0-9]/g, '');
+      if (clean.length >= 10 && state.selectedLead.has_whatsapp !== false) {
+        const msg = (state.settings.whatsapp_template || 'Hola, buen dia.').replace(/{nombre}/g, state.selectedLead.name);
+        window.open(`https://wa.me/${clean}?text=${encodeURIComponent(msg)}`, '_blank');
+      }
+      return;
+    }
+
+    // Copy commercial pitch (C)
+    if (key === 'c' && state.selectedLead) {
+      e.preventDefault();
+      copyCommercialPitch(state.selectedLead);
+      return;
+    }
+
+    // Quick Note (N)
+    if (key === 'n' && state.selectedLead && drawerLeadDetail && drawerLeadDetail.style.display !== 'none') {
+      e.preventDefault();
+      const tabNotesBtn = document.querySelector('.drawer-tab-btn[data-tab="tab-notes"]');
+      if (tabNotesBtn) tabNotesBtn.click();
+      const noteTa = document.getElementById('drawer-note-content');
+      if (noteTa) noteTa.focus();
+      return;
+    }
+
+    // Focus mode numbers: 1 (Contacted), 2 (No WA), 3 (Discard)
+    if (state.leadViewMode === 'focus' && state.selectedLead) {
+      if (key === '1') {
+        e.preventDefault();
+        handleFocusContacted(state.selectedLead);
+      } else if (key === '2') {
+        e.preventDefault();
+        handleFocusNoWa(state.selectedLead);
+      } else if (key === '3') {
+        e.preventDefault();
+        handleFocusDiscard(state.selectedLead);
+      }
+    }
+
+    // Escape closes In-App Preview or Duplicate Modal
+    if (key === 'Escape') {
+      closeInAppWebPreview();
+      const dupModal = document.getElementById('modal-merge-duplicate');
+      if (dupModal) dupModal.style.display = 'none';
+      const angleMenu = document.getElementById('wa-angle-menu');
+      if (angleMenu) angleMenu.classList.add('hidden');
+    }
+  });
+
+  // ============================================================================
+  // FASE 9: IN-APP WEB PREVIEW (VISOR INTEGRADO SIN SALIR DE LA APP)
+  // ============================================================================
+  function openInAppWebPreview(lead) {
+    if (!lead || !lead.website) {
+      showCommercialToast('Este prospecto no tiene sitio web registrado.');
+      return;
+    }
+    state.activePreviewLead = lead;
+
+    const previewContainer = document.getElementById('in-app-web-preview');
+    if (!previewContainer) return;
+
+    const urlText = document.getElementById('preview-url-text');
+    const sslIcon = document.getElementById('preview-ssl-icon');
+    const flawPill = document.getElementById('preview-live-flaw-pill');
+    const flawSummary = document.getElementById('preview-flaw-summary');
+    const flawList = document.getElementById('preview-flaw-list');
+    const extLink = document.getElementById('preview-external-link');
+    const iframe = document.getElementById('preview-iframe');
+
+    // Domain display
+    const domain = lead.normalized_domain || lead.website.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+    if (urlText) urlText.textContent = domain;
+
+    // SSL badge
+    const isHttps = lead.website.toLowerCase().startsWith('https://');
+    if (sslIcon) {
+      if (isHttps) {
+        sslIcon.className = 'preview-ssl-badge valid';
+        sslIcon.title = 'Sitio con conexion segura (SSL)';
+        sslIcon.innerHTML = '<svg class="icon-inline" style="width:14px;height:14px;"><use href="#icon-lock"/></svg>';
+      } else {
+        sslIcon.className = 'preview-ssl-badge warning';
+        sslIcon.title = 'Sitio no protegido (sin candado SSL)';
+        sslIcon.innerHTML = '<svg class="icon-inline" style="width:14px;height:14px;"><use href="#icon-unlock"/></svg>';
+      }
+    }
+
+    // Creative Freedom #1: Live Speed & Flaw Visual Overlay on Preview
+    const flaws = Array.isArray(lead.sales_arguments) ? lead.sales_arguments : [];
+    if (flawPill) {
+      if (flaws.length > 0) {
+        flawPill.classList.remove('hidden');
+        if (flawSummary) flawSummary.textContent = `${flaws.length} punto${flaws.length > 1 ? 's' : ''} de mejora`;
+        if (flawList) {
+          flawList.innerHTML = `<ul>${flaws.map(f => `<li>${escapeHtml(f)}</li>`).join('')}</ul>`;
+        }
+      } else {
+        flawPill.classList.add('hidden');
+      }
+    }
+
+    // External link
+    if (extLink) extLink.href = lead.website;
+
+    // Proxy URL inside isolated iframe
+    const proxyUrl = `/api/v1/preview/proxy?url=${encodeURIComponent(lead.website)}`;
+    if (iframe) iframe.src = proxyUrl;
+
+    // Load Lead Notes for quick notepad inside preview
+    loadPreviewNotes(lead.id);
+
+    // Show preview container
+    previewContainer.classList.remove('hidden');
+    document.body.classList.add('preview-open');
+  }
+
+  function closeInAppWebPreview() {
+    const previewContainer = document.getElementById('in-app-web-preview');
+    if (previewContainer) previewContainer.classList.add('hidden');
+    document.body.classList.remove('preview-open');
+
+    const iframe = document.getElementById('preview-iframe');
+    if (iframe) iframe.src = 'about:blank';
+
+    const notepadDrawer = document.getElementById('preview-notepad-drawer');
+    if (notepadDrawer) notepadDrawer.classList.add('hidden');
+
+    state.activePreviewLead = null;
+  }
+
+  async function loadPreviewNotes(leadId) {
+    const historyEl = document.getElementById('preview-notes-history');
+    if (!historyEl) return;
+    try {
+      const res = await fetch(`/api/v1/leads/${leadId}/notes`);
+      if (res.ok) {
+        const notes = await res.json();
+        if (notes.length === 0) {
+          historyEl.innerHTML = '<div style="color:var(--text-muted); font-size:11px;">Sin notas guardadas aun.</div>';
+        } else {
+          historyEl.innerHTML = notes.map(n => `
+            <div class="preview-note-item">
+              <div>${escapeHtml(n.content)}</div>
+              <div style="font-size:9px; color:var(--text-muted); margin-top:2px;">${new Date(n.created_at).toLocaleString('es-MX')}</div>
+            </div>
+          `).join('');
+        }
+      }
+    } catch (err) {
+      console.error('Error loading notes:', err);
+    }
+  }
+
+  async function submitPreviewNote() {
+    if (!state.activePreviewLead) return;
+    const input = document.getElementById('preview-note-input');
+    if (!input || !input.value.trim()) return;
+
+    const content = input.value.trim();
+    try {
+      const res = await fetch(`/api/v1/leads/${state.activePreviewLead.id}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: content, author: 'Operador' })
+      });
+      if (res.ok) {
+        input.value = '';
+        loadPreviewNotes(state.activePreviewLead.id);
+        showCommercialToast('Nota guardada');
+      }
+    } catch (err) {
+      showCommercialToast('Error al guardar la nota');
+    }
+  }
+
+  // ============================================================================
+  // FASE 9: BARRA FLOTANTE DE ACCIONES EN LOTE
+  // ============================================================================
+  function updateBatchBar() {
+    const bar = document.getElementById('floating-batch-bar');
+    const countEl = document.getElementById('batch-selected-count');
+    const count = state.selectedLeadIds.size;
+
+    if (count >= 2) {
+      if (bar) bar.classList.remove('hidden');
+      if (countEl) countEl.textContent = count;
+    } else {
+      if (bar) bar.classList.add('hidden');
+    }
+
+    document.querySelectorAll('.lead-select-checkbox').forEach(cb => {
+      cb.checked = state.selectedLeadIds.has(cb.dataset.leadId);
+    });
+  }
+
+  function clearBatchSelection() {
+    state.selectedLeadIds.clear();
+    const thAll = document.getElementById('th-select-all-leads');
+    if (thAll) thAll.checked = false;
+    updateBatchBar();
+  }
+
+  async function batchUpdateStage(newStage) {
+    if (state.selectedLeadIds.size === 0) return;
+    try {
+      const res = await fetch('/api/v1/leads/batch/stage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead_ids: Array.from(state.selectedLeadIds),
+          stage: newStage,
+          reason: 'Cambio de fase en lote'
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showCommercialToast(`${data.updated_count} prospectos movidos`);
+        clearBatchSelection();
+        loadPipelineBoard();
+      }
+    } catch (err) {
+      showCommercialToast('Error al actualizar fase');
+    }
+  }
+
+  async function batchUpdateTags(action, tag) {
+    if (state.selectedLeadIds.size === 0) return;
+    try {
+      const res = await fetch('/api/v1/leads/batch/tags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead_ids: Array.from(state.selectedLeadIds),
+          action: action,
+          tag: tag
+        })
+      });
+      if (res.ok) {
+        showCommercialToast('Etiquetas actualizadas');
+        clearBatchSelection();
+        loadPipelineBoard();
+      }
+    } catch (err) {
+      showCommercialToast('Error al actualizar etiquetas');
+    }
+  }
+
+  async function batchExport() {
+    if (state.selectedLeadIds.size === 0) return;
+    try {
+      const res = await fetch('/api/v1/leads/batch/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead_ids: Array.from(state.selectedLeadIds)
+        })
+      });
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `prospectos_exportados_${new Date().toISOString().slice(0,10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+        showCommercialToast('Descarga CSV iniciada');
+      }
+    } catch (err) {
+      showCommercialToast('Error al exportar prospectos');
+    }
+  }
+
+  async function batchTrash() {
+    if (state.selectedLeadIds.size === 0) return;
+    const count = state.selectedLeadIds.size;
+    if (!confirm(`¿Mover ${count} prospectos a la papelera?`)) return;
+
+    try {
+      const res = await fetch('/api/v1/leads/batch/trash', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead_ids: Array.from(state.selectedLeadIds),
+          reason: 'Descarte en lote'
+        })
+      });
+      if (res.ok) {
+        showCommercialToast(`${count} prospectos movidos a papelera`);
+        clearBatchSelection();
+        loadPipelineBoard();
+        loadTrashCount();
+      }
+    } catch (err) {
+      showCommercialToast('Error al descartar prospectos');
+    }
+  }
+
+  // ============================================================================
+  // FASE 9: DETECTOR VISUAL DE POSIBLES DUPLICADOS
+  // ============================================================================
+  async function loadSuspectedDuplicates() {
+    try {
+      const res = await fetch('/api/v1/deduplication/suspected-duplicates');
+      if (res.ok) {
+        const data = await res.json();
+        state.suspectedPairs = data.suspected_pairs || [];
+        state.leadFlags = data.lead_flags || {};
+
+        const dupCounter = document.getElementById('dup-badge-counter');
+        if (dupCounter) {
+          if (state.suspectedPairs.length > 0) {
+            dupCounter.textContent = state.suspectedPairs.length;
+            dupCounter.classList.remove('hidden');
+          } else {
+            dupCounter.classList.add('hidden');
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching suspected duplicates:', err);
+    }
+  }
+
+  function openDuplicateComparison(pairId) {
+    const pair = state.suspectedPairs.find(p => p.pair_id === pairId);
+    if (!pair) return;
+
+    state.activeSuspectedPair = pair;
+    const modal = document.getElementById('modal-merge-duplicate');
+    const badge = document.getElementById('dup-similarity-badge');
+    const colA = document.getElementById('dup-lead-a-fields');
+    const colB = document.getElementById('dup-lead-b-fields');
+
+    if (badge) badge.textContent = `${pair.similarity_pct}% de similitud`;
+
+    const renderFields = (lead) => `
+      <div class="compare-field-row">
+        <span class="compare-field-label">Nombre Comercial</span>
+        <span class="compare-field-value"><strong>${escapeHtml(lead.name)}</strong></span>
+      </div>
+      <div class="compare-field-row">
+        <span class="compare-field-label">Telefono</span>
+        <span class="compare-field-value">${escapeHtml(lead.phone_e164 || lead.phone_raw || 'Sin telefono')}</span>
+      </div>
+      <div class="compare-field-row">
+        <span class="compare-field-label">Sitio Web</span>
+        <span class="compare-field-value">${lead.website ? escapeHtml(lead.website) : 'Sin web'}</span>
+      </div>
+      <div class="compare-field-row">
+        <span class="compare-field-label">Colonia / Zona</span>
+        <span class="compare-field-value">${escapeHtml(lead.suburb || lead.city || 'Tijuana')}</span>
+      </div>
+      <div class="compare-field-row">
+        <span class="compare-field-label">Fase Comercial</span>
+        <span class="compare-field-value"><span class="score-badge med">${escapeHtml(lead.lifecycle_stage)}</span></span>
+      </div>
+    `;
+
+    if (colA) colA.innerHTML = renderFields(pair.lead_a);
+    if (colB) colB.innerHTML = renderFields(pair.lead_b);
+
+    if (modal) modal.style.display = 'flex';
+  }
+
+  async function resolveDuplicate(action) {
+    if (!state.activeSuspectedPair) return;
+    const pair = state.activeSuspectedPair;
+
+    try {
+      const res = await fetch('/api/v1/deduplication/resolve-suspected', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: action,
+          lead_a_id: pair.lead_a.id,
+          lead_b_id: pair.lead_b.id,
+          master_id: pair.lead_a.id
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showCommercialToast(data.message || 'Resuelto exitosamente');
+        const modal = document.getElementById('modal-merge-duplicate');
+        if (modal) modal.style.display = 'none';
+        state.activeSuspectedPair = null;
+        await loadSuspectedDuplicates();
+        loadPipelineBoard();
+      }
+    } catch (err) {
+      showCommercialToast('Error al resolver duplicado');
+    }
+  }
+
+  // ============================================================================
+  // FASE 9: HISTORIAL DE BUSQUEDAS RECIENTES (1-CLIC RE-SCAN)
+  // ============================================================================
+  async function loadRecentSearches() {
+    const container = document.getElementById('recent-chips-container');
+    if (!container) return;
+    try {
+      const res = await fetch('/api/v1/geo/recent-searches');
+      if (res.ok) {
+        const searches = await res.json();
+        state.recentSearches = searches;
+        if (searches.length === 0) {
+          container.innerHTML = '<span style="color:var(--text-muted); font-size:11px;">Sin busquedas previas</span>';
+        } else {
+          container.innerHTML = searches.map(s => `
+            <button type="button" class="chip-recent" data-cat="${escapeHtml(s.category)}" data-loc="${escapeHtml(s.location)}">
+              ${escapeHtml(s.category)} en ${escapeHtml(s.location)}
+            </button>
+          `).join('');
+
+          container.querySelectorAll('.chip-recent').forEach(chip => {
+            chip.addEventListener('click', () => {
+              const cat = chip.dataset.cat;
+              const loc = chip.dataset.loc;
+              const inCat = document.getElementById('input-search-category');
+              const inLoc = document.getElementById('input-search-location');
+              if (inCat) inCat.value = cat;
+              if (inLoc) inLoc.value = loc;
+              const btnRun = document.getElementById('btn-run-search');
+              if (btnRun) btnRun.click();
+            });
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error loading recent searches:', err);
+    }
+  }
+
+  // ============================================================================
+  // FASE 9: WHATSAPP ANGLE SELECTOR (CREATIVE FREEDOM #2)
+  // ============================================================================
+  function openWhatsAppAngleMenu(lead, triggerEl) {
+    state.waAngleLead = lead;
+    const menu = document.getElementById('wa-angle-menu');
+    if (!menu) return;
+
+    const rect = triggerEl.getBoundingClientRect();
+    menu.style.top = `${rect.bottom + 6}px`;
+    menu.style.left = `${Math.min(rect.left, window.innerWidth - 240)}px`;
+    menu.classList.remove('hidden');
+  }
+
+  function handleWhatsAppAngleSelect(angle) {
+    const lead = state.waAngleLead;
+    if (!lead) return;
+
+    const cleanPhone = (lead.phone_e164 || lead.phone_raw || '').replace(/[^0-9]/g, '');
+    if (cleanPhone.length < 10) {
+      showCommercialToast('Telefono no valido para WhatsApp');
+      return;
+    }
+
+    let text = '';
+    const leadName = lead.name || 'estimado';
+
+    if (angle === 'ssl') {
+      text = `Hola ${leadName}, buen dia. Notamos que el candado de seguridad en su sitio web muestra advertencias a clientes en celular. En Tijuana podemos resolverlo en 24 horas para evitar perder consultas.`;
+    } else if (angle === 'mobile') {
+      text = `Hola ${leadName}, un gusto saludarle. Al revisar su presencia en linea en Tijuana, vimos que su pagina no esta adaptada a celulares y pierde citas de pacientes o clientes. ¿Tienen disponible unos minutos esta semana?`;
+    } else if (angle === 'maps') {
+      text = `Hola ${leadName}. Vimos su perfil en mapas de Tijuana con muy buenas opiniones y nos gustaria proponerles enlazar sus citas directamente a este WhatsApp para duplicar prospectos.`;
+    } else {
+      const template = state.settings.whatsapp_template || 'Hola, buen dia.';
+      text = template.replace(/{nombre}/g, leadName);
+    }
+
+    logInteraction(lead.id, 'WHATSAPP', `Mensaje enviado con angulo: ${angle}`);
+    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`, '_blank');
+
+    const menu = document.getElementById('wa-angle-menu');
+    if (menu) menu.classList.add('hidden');
+    state.waAngleLead = null;
+  }
+
+  // ============================================================================
+  // FASE 9: QUICK FILTER SOLO-ICON BAR (CREATIVE FREEDOM #3)
+  // ============================================================================
+  function initQuickFilters() {
+    const bar = document.getElementById('quick-filter-icon-bar');
+    if (!bar) return;
+
+    bar.querySelectorAll('.btn-filter-icon').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const filter = btn.dataset.filter;
+        if (state.quickFilter === filter) {
+          state.quickFilter = null;
+          btn.classList.remove('active');
+        } else {
+          bar.querySelectorAll('.btn-filter-icon').forEach(b => b.classList.remove('active'));
+          state.quickFilter = filter;
+          btn.classList.add('active');
+        }
+        if (state.leadViewMode === 'kanban') renderKanbanBoard();
+        else if (state.leadViewMode === 'table') renderDenseTable(state.leads);
+      });
+    });
+  }
+
+  // ============================================================================
+  // FASE 9: EVENT LISTENERS INITIALIZATION
+  // ============================================================================
+  function initPhase9EventListeners() {
+    // In-App Web Preview Controls
+    const btnClosePreview = document.getElementById('preview-close-btn');
+    if (btnClosePreview) btnClosePreview.addEventListener('click', closeInAppWebPreview);
+
+    const btnToggleDesktop = document.getElementById('preview-toggle-desktop');
+    const btnToggleMobile = document.getElementById('preview-toggle-mobile');
+    const deviceFrame = document.getElementById('preview-device-frame');
+
+    if (btnToggleDesktop && deviceFrame) {
+      btnToggleDesktop.addEventListener('click', () => {
+        btnToggleDesktop.classList.add('active');
+        if (btnToggleMobile) btnToggleMobile.classList.remove('active');
+        deviceFrame.className = 'device-desktop';
+      });
+    }
+
+    if (btnToggleMobile && deviceFrame) {
+      btnToggleMobile.addEventListener('click', () => {
+        btnToggleMobile.classList.add('active');
+        if (btnToggleDesktop) btnToggleDesktop.classList.remove('active');
+        deviceFrame.className = 'device-mobile';
+      });
+    }
+
+    const btnReloadPreview = document.getElementById('preview-reload-btn');
+    if (btnReloadPreview) {
+      btnReloadPreview.addEventListener('click', () => {
+        if (state.activePreviewLead && state.activePreviewLead.website) {
+          const iframe = document.getElementById('preview-iframe');
+          if (iframe) iframe.src = `/api/v1/preview/proxy?url=${encodeURIComponent(state.activePreviewLead.website)}`;
+        }
+      });
+    }
+
+    const btnNotesToggle = document.getElementById('preview-notes-toggle');
+    const notepadDrawer = document.getElementById('preview-notepad-drawer');
+    const btnNotepadClose = document.getElementById('preview-notepad-close');
+    const btnNoteSubmit = document.getElementById('preview-note-submit');
+
+    if (btnNotesToggle && notepadDrawer) {
+      btnNotesToggle.addEventListener('click', () => {
+        notepadDrawer.classList.toggle('hidden');
+        if (!notepadDrawer.classList.contains('hidden')) {
+          const input = document.getElementById('preview-note-input');
+          if (input) input.focus();
+        }
+      });
+    }
+
+    if (btnNotepadClose && notepadDrawer) {
+      btnNotepadClose.addEventListener('click', () => {
+        notepadDrawer.classList.add('hidden');
+      });
+    }
+
+    if (btnNoteSubmit) {
+      btnNoteSubmit.addEventListener('click', submitPreviewNote);
+    }
+
+    const previewNoteInput = document.getElementById('preview-note-input');
+    if (previewNoteInput) {
+      previewNoteInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          submitPreviewNote();
+        }
+      });
+    }
+
+    // Popover trigger inside Preview Flaw Pill
+    const flawBtn = document.getElementById('preview-flaw-popover-btn');
+    const flawPopover = document.getElementById('preview-flaw-popover');
+    if (flawBtn && flawPopover) {
+      flawBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        flawPopover.classList.toggle('hidden');
+      });
+      document.addEventListener('click', (e) => {
+        if (!flawPopover.contains(e.target) && e.target !== flawBtn) {
+          flawPopover.classList.add('hidden');
+        }
+      });
+    }
+
+    // Floating Batch Bar Buttons
+    const batchStageBtn = document.getElementById('batch-stage-btn');
+    const modalBatchStage = document.getElementById('modal-batch-stage');
+    const batchStageConfirmBtn = document.getElementById('batch-stage-confirm-btn');
+
+    if (batchStageBtn && modalBatchStage) {
+      batchStageBtn.addEventListener('click', () => {
+        modalBatchStage.style.display = 'flex';
+      });
+    }
+
+    if (batchStageConfirmBtn && modalBatchStage) {
+      batchStageConfirmBtn.addEventListener('click', () => {
+        const select = document.getElementById('batch-target-stage');
+        if (select) {
+          batchUpdateStage(select.value);
+          modalBatchStage.style.display = 'none';
+        }
+      });
+    }
+
+    const batchTagBtn = document.getElementById('batch-tag-btn');
+    const modalBatchTag = document.getElementById('modal-batch-tag');
+    const batchTagConfirmBtn = document.getElementById('batch-tag-confirm-btn');
+
+    if (batchTagBtn && modalBatchTag) {
+      batchTagBtn.addEventListener('click', () => {
+        modalBatchTag.style.display = 'flex';
+      });
+    }
+
+    if (batchTagConfirmBtn && modalBatchTag) {
+      batchTagConfirmBtn.addEventListener('click', () => {
+        const actionSel = document.getElementById('batch-tag-action');
+        const input = document.getElementById('batch-tag-input');
+        if (actionSel && input && input.value.trim()) {
+          batchUpdateTags(actionSel.value, input.value.trim());
+          modalBatchTag.style.display = 'none';
+          input.value = '';
+        }
+      });
+    }
+
+    const batchExportBtn = document.getElementById('batch-export-btn');
+    if (batchExportBtn) batchExportBtn.addEventListener('click', batchExport);
+
+    const batchTrashBtn = document.getElementById('batch-trash-btn');
+    if (batchTrashBtn) batchTrashBtn.addEventListener('click', batchTrash);
+
+    const batchCancelBtn = document.getElementById('batch-cancel-btn');
+    if (batchCancelBtn) batchCancelBtn.addEventListener('click', clearBatchSelection);
+
+    // Table Header Select All
+    const thSelectAll = document.getElementById('th-select-all-leads');
+    if (thSelectAll) {
+      thSelectAll.addEventListener('change', () => {
+        const checkboxes = document.querySelectorAll('.lead-select-checkbox');
+        checkboxes.forEach(cb => {
+          cb.checked = thSelectAll.checked;
+          if (thSelectAll.checked) state.selectedLeadIds.add(cb.dataset.leadId);
+          else state.selectedLeadIds.delete(cb.dataset.leadId);
+        });
+        updateBatchBar();
+      });
+    }
+
+    // Modal close buttons
+    document.querySelectorAll('[data-close-modal]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const modalId = btn.dataset.closeModal;
+        const modal = document.getElementById(modalId);
+        if (modal) modal.style.display = 'none';
+      });
+    });
+
+    // Suspected duplicate modal actions
+    const dupMergeBtn = document.getElementById('dup-confirm-merge-btn');
+    const dupDistinctBtn = document.getElementById('dup-mark-distinct-btn');
+    if (dupMergeBtn) dupMergeBtn.addEventListener('click', () => resolveDuplicate('merge'));
+    if (dupDistinctBtn) dupDistinctBtn.addEventListener('click', () => resolveDuplicate('whitelist'));
+
+    // WhatsApp angle menu
+    const angleMenu = document.getElementById('wa-angle-menu');
+    if (angleMenu) {
+      angleMenu.querySelectorAll('.angle-item').forEach(item => {
+        item.addEventListener('click', () => {
+          handleWhatsAppAngleSelect(item.dataset.angle);
+        });
+      });
+      document.addEventListener('click', (e) => {
+        if (!angleMenu.contains(e.target) && !e.target.closest('.btn-wa-angle-trigger')) {
+          angleMenu.classList.add('hidden');
+        }
+      });
+    }
+
+    // Quick filters
+    initQuickFilters();
+  }
+
+  // ==============================================================================
+  // FASE 10 EXTENDIDA: FULL PRODUCTIVITY SUITE, SHORTCUTS, PORTALS & LIFECYCLE
+  // ==============================================================================
+
+  function recordDailyAction(actionType) {
+    const todayKey = 'crm_actions_' + new Date().toISOString().slice(0, 10);
+    let count = parseInt(localStorage.getItem(todayKey) || '0', 10);
+    count += 1;
+    localStorage.setItem(todayKey, count);
+    const countEl = document.getElementById('copilot-actions-count');
+    if (countEl) countEl.textContent = count;
+  }
+
+  function initDailyCopilotCounter() {
+    const todayKey = 'crm_actions_' + new Date().toISOString().slice(0, 10);
+    let count = parseInt(localStorage.getItem(todayKey) || '0', 10);
+    const countEl = document.getElementById('copilot-actions-count');
+    if (countEl) countEl.textContent = count;
+  }
+
+  function showGlobalPortalPopover(targetEl, text) {
+    const portal = document.getElementById('global-portal-popover');
+    if (!portal || !text) return;
+    portal.textContent = text;
+    portal.classList.remove('hidden');
+
+    const rect = targetEl.getBoundingClientRect();
+    const popoverRect = portal.getBoundingClientRect();
+
+    let top = rect.top - popoverRect.height - 8;
+    if (top < 8) {
+      top = rect.bottom + 8;
+    }
+
+    let left = rect.left + (rect.width / 2) - (popoverRect.width / 2);
+    if (left < 8) left = 8;
+    if (left + popoverRect.width > window.innerWidth - 8) {
+      left = window.innerWidth - popoverRect.width - 8;
+    }
+
+    portal.style.top = `${top}px`;
+    portal.style.left = `${left}px`;
+  }
+
+  function hideGlobalPortalPopover() {
+    const portal = document.getElementById('global-portal-popover');
+    if (portal) portal.classList.add('hidden');
+  }
+
+  function initGlobalPortalPopovers() {
+    document.addEventListener('mouseover', (e) => {
+      const trigger = e.target.closest('[data-tooltip], [data-popover]');
+      if (trigger) {
+        const text = trigger.dataset.tooltip || trigger.dataset.popover;
+        if (text) showGlobalPortalPopover(trigger, text);
+      }
+    });
+    document.addEventListener('mouseout', (e) => {
+      const trigger = e.target.closest('[data-tooltip], [data-popover]');
+      if (trigger) hideGlobalPortalPopover();
+    });
+  }
+
+  async function loadTodayTrayCount() {
+    try {
+      const res = await fetch('/api/v1/leads/today/tray');
+      if (!res.ok) return;
+      const data = await res.json();
+      const badge = document.getElementById('badge-today-count');
+      if (badge) badge.textContent = data.total_count || 0;
+    } catch (e) {
+      console.error('[TodayTrayCount] Error:', e);
+    }
+  }
+
+  async function renderTodayTray(activeFilter) {
+    const listEl = document.getElementById('today-tray-items-list');
+    const summaryEl = document.getElementById('tray-summary-text');
+    if (!listEl) return;
+
+    listEl.innerHTML = '<div style="font-size:12px; color:var(--text-secondary); padding:10px;">Cargando pendientes para hoy...</div>';
+
+    try {
+      const res = await fetch('/api/v1/leads/today/tray');
+      if (!res.ok) {
+        listEl.innerHTML = '<div style="font-size:12px; color:var(--badge-red-text); padding:10px;">Error al cargar pendientes.</div>';
+        return;
+      }
+      const data = await res.json();
+
+      const countAll = document.getElementById('tray-count-all');
+      const countCal = document.getElementById('tray-count-calendar');
+      const countPost = document.getElementById('tray-count-postponed');
+      const countStag = document.getElementById('tray-count-stagnant');
+      const badgeTop = document.getElementById('badge-today-count');
+
+      if (countAll) countAll.textContent = data.total_count || 0;
+      if (countCal) countCal.textContent = data.calendar_count || 0;
+      if (countPost) countPost.textContent = data.postponed_count || 0;
+      if (countStag) countStag.textContent = data.stagnant_count || 0;
+      if (badgeTop) badgeTop.textContent = data.total_count || 0;
+
+      if (summaryEl) {
+        summaryEl.textContent = `${data.total_count || 0} pendientes para resolver hoy en Tijuana`;
+      }
+
+      let itemsToRender = data.items || [];
+      if (activeFilter === 'calendar') itemsToRender = data.calendar_leads || [];
+      else if (activeFilter === 'postponed') itemsToRender = data.postponed_leads || [];
+      else if (activeFilter === 'stagnant') itemsToRender = data.stagnant_leads || [];
+
+      if (itemsToRender.length === 0) {
+        listEl.innerHTML = `
+          <div style="text-align:center; padding:30px 10px; color:var(--text-secondary); font-size:12px;">
+            <svg style="width:24px;height:24px; margin-bottom:6px; opacity:0.6;" stroke="currentColor" fill="none"><use href="#icon-check-square"/></svg>
+            <div>¡Al dia! No hay prospectos pendientes en este filtro para hoy.</div>
+          </div>
+        `;
+        return;
+      }
+
+      listEl.innerHTML = '';
+      itemsToRender.forEach(lead => {
+        let badgeType = 'stagnant';
+        let badgeText = 'Estancado';
+        if (data.calendar_leads && data.calendar_leads.some(c => c.id === lead.id)) {
+          badgeType = 'calendar';
+          badgeText = 'Cita Hoy';
+        } else if (data.postponed_leads && data.postponed_leads.some(p => p.id === lead.id)) {
+          badgeType = 'postponed';
+          badgeText = 'Reactivar';
+        }
+
+        const cleanPhone = (lead.phone_e164 || lead.phone_raw || '').replace(/[^0-9+]/g, '');
+        const waUrl = cleanPhone.length >= 10 ? `https://wa.me/${cleanPhone.replace('+', '')}?text=${encodeURIComponent('Hola, buen día. Le escribo para dar seguimiento a su propuesta comercial en Tijuana.')}` : '';
+
+        const itemEl = document.createElement('div');
+        itemEl.className = 'tray-lead-item';
+        itemEl.innerHTML = `
+          <div class="tray-lead-header">
+            <div class="tray-lead-title" title="${escapeHtml(lead.name)}">${escapeHtml(lead.name)}</div>
+            <span class="tray-badge-pill ${badgeType}">${badgeText}</span>
+          </div>
+          <div style="font-size:11px; color:var(--text-secondary); display:flex; justify-content:space-between;">
+            <span>${escapeHtml(lead.primary_category || lead.category_slug)}</span>
+            <span>Fase: <strong>${escapeHtml(lead.lifecycle_stage)}</strong></span>
+          </div>
+          <div class="tray-actions-bar">
+            <div class="tray-solo-icons">
+              ${waUrl && lead.has_whatsapp !== false ? `
+                <a href="${waUrl}" target="_blank" class="btn-solo-icon btn-tray-wa" data-tooltip="Abrir WhatsApp" style="width:30px;height:30px;min-width:30px;min-height:30px;">
+                  <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-message-circle"/></svg>
+                </a>
+              ` : `
+                <button class="btn-solo-icon disabled" data-tooltip="Sin WhatsApp" style="width:30px;height:30px;min-width:30px;min-height:30px;">
+                  <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-phone-off"/></svg>
+                </button>
+              `}
+              ${cleanPhone ? `
+                <a href="tel:${cleanPhone}" class="btn-solo-icon btn-tray-call" data-tooltip="Llamar" style="width:30px;height:30px;min-width:30px;min-height:30px;">
+                  <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-phone"/></svg>
+                </a>
+              ` : ''}
+              <button type="button" class="btn-solo-icon btn-tray-view" data-tooltip="Ver ficha integral" style="width:30px;height:30px;min-width:30px;min-height:30px;">
+                <svg style="width:13px;height:13px;" stroke="currentColor" fill="none"><use href="#icon-users"/></svg>
+              </button>
+            </div>
+            ${badgeType === 'stagnant' ? `
+              <button type="button" class="btn-action btn-tray-revive" style="font-size:10px; height:24px; padding:0 8px; background:var(--bg-app);" title="Generar sugerencia de reactivacion inteligente">
+                <svg style="width:11px;height:11px;" stroke="currentColor" fill="none"><use href="#icon-rotate-ccw"/></svg>
+                Auto-Reactivar
+              </button>
+            ` : ''}
+          </div>
+        `;
+
+        // Wire events inside tray item
+        const btnView = itemEl.querySelector('.btn-tray-view');
+        if (btnView) {
+          btnView.addEventListener('click', () => {
+            const modalTray = document.getElementById('modal-today-tray');
+            if (modalTray) modalTray.style.display = 'none';
+            openLeadDrawer(lead);
+          });
+        }
+
+        const titleEl = itemEl.querySelector('.tray-lead-title');
+        if (titleEl) {
+          titleEl.addEventListener('click', () => {
+            const modalTray = document.getElementById('modal-today-tray');
+            if (modalTray) modalTray.style.display = 'none';
+            openLeadDrawer(lead);
+          });
+        }
+
+        const btnWa = itemEl.querySelector('.btn-tray-wa');
+        if (btnWa) {
+          btnWa.addEventListener('click', () => recordDailyAction('whatsapp'));
+        }
+
+        const btnCall = itemEl.querySelector('.btn-tray-call');
+        if (btnCall) {
+          btnCall.addEventListener('click', () => recordDailyAction('call'));
+        }
+
+        const btnRevive = itemEl.querySelector('.btn-tray-revive');
+        if (btnRevive) {
+          btnRevive.addEventListener('click', async () => {
+            btnRevive.disabled = true;
+            try {
+              const noteText = `Auto-reactivacion inteligente: Se retoma contacto con ${lead.name} tras periodo inactivo. Enfoque sugerido: propuesta de modernizacion digital local con soporte en Tijuana.`;
+              await fetch(`/api/v1/leads/${lead.id}/notes`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: noteText, author: 'Auto-Copiloto' })
+              });
+              recordDailyAction('revive');
+              showCommercialToast(`Reactivacion registrada para "${lead.name}"`);
+              await renderTodayTray(activeFilter);
+              loadPipelineBoard();
+            } catch (err) {
+              console.error('[AutoRevive] Error:', err);
+            }
+          });
+        }
+
+        listEl.appendChild(itemEl);
+      });
+    } catch (err) {
+      console.error('[RenderTodayTray] Error:', err);
+      listEl.innerHTML = '<div style="font-size:12px; color:var(--badge-red-text); padding:10px;">Error de conexion al cargar bandeja.</div>';
+    }
+  }
+
+  function initPhase10Features() {
+    initDailyCopilotCounter();
+    initGlobalPortalPopovers();
+    loadTodayTrayCount();
+
+    // 1. Manual Lead Registration
+    const topBtnNewLead = document.getElementById('top-btn-new-lead');
+    const modalNewLead = document.getElementById('modal-new-lead');
+    const modalNewLeadClose = document.getElementById('modal-new-lead-close');
+    const modalNewLeadCancel = document.getElementById('modal-new-lead-cancel');
+    const formNewLead = document.getElementById('form-new-lead');
+    const selectCat = document.getElementById('new-lead-cat');
+    const inputCatCustom = document.getElementById('new-lead-cat-custom');
+    const dupAlert = document.getElementById('lead-dup-alert');
+    const dupMsg = document.getElementById('lead-dup-msg');
+    const btnDupOpen = document.getElementById('btn-dup-open-existing');
+
+    let pendingDupId = null;
+
+    if (topBtnNewLead && modalNewLead) {
+      topBtnNewLead.addEventListener('click', () => {
+        if (formNewLead) formNewLead.reset();
+        if (dupAlert) dupAlert.style.display = 'none';
+        if (inputCatCustom) inputCatCustom.style.display = 'none';
+        pendingDupId = null;
+        modalNewLead.style.display = 'flex';
+        const nameInput = document.getElementById('new-lead-name');
+        if (nameInput) nameInput.focus();
+      });
+    }
+
+    if (modalNewLeadClose && modalNewLead) {
+      modalNewLeadClose.addEventListener('click', () => modalNewLead.style.display = 'none');
+    }
+    if (modalNewLeadCancel && modalNewLead) {
+      modalNewLeadCancel.addEventListener('click', () => modalNewLead.style.display = 'none');
+    }
+
+    if (selectCat && inputCatCustom) {
+      selectCat.addEventListener('change', () => {
+        if (selectCat.value === '__new__') {
+          inputCatCustom.style.display = 'block';
+          inputCatCustom.focus();
+        } else {
+          inputCatCustom.style.display = 'none';
+        }
+      });
+    }
+
+    if (btnDupOpen) {
+      btnDupOpen.addEventListener('click', async () => {
+        if (!pendingDupId) return;
+        if (modalNewLead) modalNewLead.style.display = 'none';
+        try {
+          const res = await fetch(`/api/v1/leads/${pendingDupId}`);
+          if (res.ok) {
+            const lead = await res.json();
+            openLeadDrawer(lead);
+          }
+        } catch (err) {
+          console.error('[OpenExisting] Error:', err);
+        }
+      });
+    }
+
+    if (formNewLead) {
+      formNewLead.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const nameInput = document.getElementById('new-lead-name');
+        const phoneInput = document.getElementById('new-lead-phone');
+        const webInput = document.getElementById('new-lead-website');
+        const emailInput = document.getElementById('new-lead-email');
+        const addrInput = document.getElementById('new-lead-address');
+        const notesInput = document.getElementById('new-lead-notes');
+
+        const name = nameInput ? nameInput.value.trim() : '';
+        const phone = phoneInput ? phoneInput.value.trim() : '';
+        const web = webInput ? webInput.value.trim() : '';
+
+        if (!name) {
+          showCommercialToast('Por favor ingrese el nombre comercial del negocio.');
+          return;
+        }
+        if (!phone && !web) {
+          showCommercialToast('Validacion inteligente: Se requiere al menos un telefono o un sitio web para guardar.');
+          return;
+        }
+
+        let catSlug = selectCat ? selectCat.value : 'dentistas';
+        let primaryCat = catSlug;
+        if (catSlug === '__new__' && inputCatCustom && inputCatCustom.value.trim()) {
+          primaryCat = inputCatCustom.value.trim();
+          catSlug = primaryCat.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        }
+
+        const socials = {
+          facebook: document.getElementById('new-lead-fb')?.value.trim() || undefined,
+          instagram: document.getElementById('new-lead-ig')?.value.trim() || undefined,
+          tiktok: document.getElementById('new-lead-tiktok')?.value.trim() || undefined,
+          linkedin: document.getElementById('new-lead-linkedin')?.value.trim() || undefined,
+          x: document.getElementById('new-lead-x')?.value.trim() || undefined,
+          youtube: document.getElementById('new-lead-yt')?.value.trim() || undefined,
+        };
+
+        const payload = {
+          name: name,
+          category_slug: catSlug,
+          primary_category: primaryCat,
+          phone_raw: phone || undefined,
+          website: web || undefined,
+          email: emailInput ? emailInput.value.trim() || undefined : undefined,
+          address_raw: addrInput ? addrInput.value.trim() || 'Tijuana, BC' : 'Tijuana, BC',
+          notes: notesInput ? notesInput.value.trim() || undefined : undefined,
+          social_links: socials
+        };
+
+        try {
+          const res = await fetch('/api/v1/leads', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          if (res.status === 409) {
+            const errData = await res.json();
+            const detail = errData.detail || {};
+            pendingDupId = detail.existing_lead_id || (detail.conflict && detail.conflict.existing_lead && detail.conflict.existing_lead.id);
+            const conflictName = detail.existing_name || 'Negocio existente';
+            if (dupAlert) {
+              dupAlert.style.display = 'block';
+              if (dupMsg) dupMsg.textContent = `Ya existe "${conflictName}" registrado con el mismo identificador.`;
+            }
+            return;
+          }
+
+          if (res.ok) {
+            const data = await res.json();
+            modalNewLead.style.display = 'none';
+            recordDailyAction('lead_created');
+            showCommercialToast(`Prospecto "${name}" guardado exitosamente`);
+            await loadPipelineBoard();
+            if (data.id) {
+              const leadRes = await fetch(`/api/v1/leads/${data.id}`);
+              if (leadRes.ok) {
+                const savedLead = await leadRes.json();
+                openLeadDrawer(savedLead);
+              }
+            }
+          } else {
+            showCommercialToast('No se pudo guardar el prospecto.');
+          }
+        } catch (err) {
+          console.error('[CreateLead] Error:', err);
+        }
+      });
+    }
+
+    // 2. In-Line Drawer Form Submit
+    const formDrawerEdit = document.getElementById('form-drawer-inline-edit');
+    if (formDrawerEdit) {
+      formDrawerEdit.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!state.selectedLead) return;
+
+        const editName = document.getElementById('edit-drawer-name');
+        const editCat = document.getElementById('edit-drawer-cat');
+        const editPhone = document.getElementById('edit-drawer-phone');
+        const editWeb = document.getElementById('edit-drawer-website');
+        const editEmail = document.getElementById('edit-drawer-email');
+        const editAddr = document.getElementById('edit-drawer-address');
+
+        const socials = {
+          facebook: document.getElementById('edit-drawer-fb')?.value.trim() || undefined,
+          instagram: document.getElementById('edit-drawer-ig')?.value.trim() || undefined,
+          tiktok: document.getElementById('edit-drawer-tiktok')?.value.trim() || undefined,
+          linkedin: document.getElementById('edit-drawer-linkedin')?.value.trim() || undefined,
+          x: document.getElementById('edit-drawer-x')?.value.trim() || undefined,
+          youtube: document.getElementById('edit-drawer-yt')?.value.trim() || undefined,
+        };
+
+        const payload = {
+          name: editName ? editName.value.trim() : undefined,
+          category_slug: editCat ? editCat.value : undefined,
+          phone_raw: editPhone ? editPhone.value.trim() : undefined,
+          website: editWeb ? editWeb.value.trim() : undefined,
+          email: editEmail ? editEmail.value.trim() : undefined,
+          address_raw: editAddr ? editAddr.value.trim() : undefined,
+          social_links: socials
+        };
+
+        try {
+          const res = await fetch(`/api/v1/leads/${state.selectedLead.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          if (res.ok) {
+            Object.assign(state.selectedLead, payload);
+            if (drawerLeadName) drawerLeadName.textContent = state.selectedLead.name;
+            if (drawerLeadCategory) drawerLeadCategory.textContent = `${state.selectedLead.primary_category || state.selectedLead.category_slug} • Tijuana, BC`;
+            recordDailyAction('edit');
+            showCommercialToast('Modificaciones guardadas en la base de datos');
+            loadPipelineBoard();
+          }
+        } catch (err) {
+          console.error('[InlineEdit] Error:', err);
+        }
+      });
+    }
+
+    // 3. "Para Hoy" Tray Modal & Tab Filters
+    const btnTrayToday = document.getElementById('btn-tray-today');
+    const modalTodayTray = document.getElementById('modal-today-tray');
+    const modalTodayTrayClose = document.getElementById('modal-today-tray-close');
+    const btnTrayLaunchFocus = document.getElementById('btn-tray-launch-focus');
+
+    let currentTrayFilter = 'all';
+
+    if (btnTrayToday && modalTodayTray) {
+      btnTrayToday.addEventListener('click', async () => {
+        modalTodayTray.style.display = 'flex';
+        currentTrayFilter = 'all';
+        document.querySelectorAll('.tray-tabs-strip .filter-btn').forEach(btn => {
+          btn.classList.toggle('active', btn.dataset.trayFilter === 'all');
+        });
+        await renderTodayTray('all');
+      });
+    }
+
+    if (modalTodayTrayClose && modalTodayTray) {
+      modalTodayTrayClose.addEventListener('click', () => modalTodayTray.style.display = 'none');
+    }
+
+    document.querySelectorAll('.tray-tabs-strip .filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tray-tabs-strip .filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentTrayFilter = btn.dataset.trayFilter;
+        renderTodayTray(currentTrayFilter);
+      });
+    });
+
+    if (btnTrayLaunchFocus) {
+      btnTrayLaunchFocus.addEventListener('click', () => {
+        if (modalTodayTray) modalTodayTray.style.display = 'none';
+        const btnToggleFocus = document.getElementById('btn-toggle-focus');
+        if (btnToggleFocus) btnToggleFocus.click();
+      });
+    }
+
+    // 4. Importer Dialog
+    const btnOpenImport = document.getElementById('btn-open-import');
+    const modalImport = document.getElementById('modal-import-leads');
+    const modalImportClose = document.getElementById('modal-import-close');
+    const btnImportCancel = document.getElementById('btn-import-cancel');
+    const btnImportExecute = document.getElementById('btn-import-execute');
+    const inputImportFile = document.getElementById('input-import-file');
+    const textareaImportRaw = document.getElementById('textarea-import-raw');
+    const importPreviewStatus = document.getElementById('import-preview-status');
+
+    if (btnOpenImport && modalImport) {
+      btnOpenImport.addEventListener('click', () => {
+        modalImport.style.display = 'flex';
+        if (textareaImportRaw) textareaImportRaw.value = '';
+        if (inputImportFile) inputImportFile.value = '';
+        if (importPreviewStatus) importPreviewStatus.textContent = 'Listo para importar.';
+      });
+    }
+    if (modalImportClose && modalImport) {
+      modalImportClose.addEventListener('click', () => modalImport.style.display = 'none');
+    }
+    if (btnImportCancel && modalImport) {
+      btnImportCancel.addEventListener('click', () => modalImport.style.display = 'none');
+    }
+
+    if (inputImportFile) {
+      inputImportFile.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          if (textareaImportRaw) textareaImportRaw.value = event.target.result;
+          if (importPreviewStatus) importPreviewStatus.textContent = `Archivo cargado: ${file.name} (${Math.round(file.size / 1024)} KB)`;
+        };
+        reader.readAsText(file);
+      });
+    }
+
+    if (btnImportExecute) {
+      btnImportExecute.addEventListener('click', async () => {
+        const raw = textareaImportRaw ? textareaImportRaw.value.trim() : '';
+        if (!raw) {
+          showCommercialToast('Por favor cargue un archivo o pegue datos para importar.');
+          return;
+        }
+
+        let parsedItems = [];
+        if (raw.startsWith('[') || raw.startsWith('{')) {
+          try {
+            const parsed = JSON.parse(raw);
+            parsedItems = Array.isArray(parsed) ? parsed : [parsed];
+          } catch (err) {
+            showCommercialToast('Error de sintaxis JSON en los datos provistos.');
+            return;
+          }
+        } else {
+          // Parse CSV
+          const lines = raw.split(/\r?\n/).filter(l => l.trim().length > 0);
+          if (lines.length === 0) return;
+          const header = lines[0].split(',').map(h => h.trim().toLowerCase());
+          for (let i = 1; i < lines.length; i++) {
+            const cols = lines[i].split(',').map(c => c.trim().replace(/^["']|["']$/g, ''));
+            if (cols.length === 0 || !cols[0]) continue;
+            parsedItems.push({
+              name: cols[0] || 'Contacto Importado',
+              category_slug: cols[1] || 'dentistas',
+              phone_raw: cols[2] || undefined,
+              website: cols[3] || undefined,
+              email: cols[4] || undefined,
+              address_raw: cols[5] || 'Tijuana, BC'
+            });
+          }
+        }
+
+        if (parsedItems.length === 0) {
+          showCommercialToast('No se encontraron registros validos para procesar.');
+          return;
+        }
+
+        btnImportExecute.disabled = true;
+        btnImportExecute.textContent = 'Importando...';
+
+        try {
+          const res = await fetch('/api/v1/leads/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ leads: parsedItems })
+          });
+          if (res.ok) {
+            const summary = await res.json();
+            showCommercialToast(`Importacion completada: ${summary.imported} guardados, ${summary.duplicates_skipped} duplicados omitidos`);
+            if (modalImport) modalImport.style.display = 'none';
+            await loadPipelineBoard();
+            recordDailyAction('import');
+          } else {
+            showCommercialToast('Error al ejecutar la importacion en el servidor.');
+          }
+        } catch (err) {
+          console.error('[Import] Error:', err);
+        } finally {
+          btnImportExecute.disabled = false;
+          btnImportExecute.textContent = 'Iniciar Importacion';
+        }
+      });
+    }
+
+    // 5. Exporter Dialog
+    const btnOpenExport = document.getElementById('btn-open-export');
+    const modalExport = document.getElementById('modal-export-leads');
+    const modalExportClose = document.getElementById('modal-export-close');
+    const btnExportCancel = document.getElementById('btn-export-cancel');
+    const btnExportExecute = document.getElementById('btn-export-execute');
+    const selectExportFormat = document.getElementById('select-export-format');
+    const selectExportScope = document.getElementById('select-export-scope');
+
+    if (btnOpenExport && modalExport) {
+      btnOpenExport.addEventListener('click', () => {
+        modalExport.style.display = 'flex';
+      });
+    }
+    if (modalExportClose && modalExport) {
+      modalExportClose.addEventListener('click', () => modalExport.style.display = 'none');
+    }
+    if (btnExportCancel && modalExport) {
+      btnExportCancel.addEventListener('click', () => modalExport.style.display = 'none');
+    }
+
+    if (btnExportExecute) {
+      btnExportExecute.addEventListener('click', () => {
+        const fmt = selectExportFormat ? selectExportFormat.value : 'csv';
+        const scope = selectExportScope ? selectExportScope.value : 'all';
+        let url = `/api/v1/leads/export?format=${fmt}`;
+        if (scope === 'filtered' && state.selectedCategory) {
+          url += `&category_slug=${encodeURIComponent(state.selectedCategory)}`;
+        }
+        window.open(url, '_blank');
+        if (modalExport) modalExport.style.display = 'none';
+        recordDailyAction('export');
+        showCommercialToast(`Exportando archivo en formato ${fmt.toUpperCase()}...`);
+      });
+    }
+
+    // 6. Fast Keyboard Shortcuts (Directive 4.4)
+    const btnShortcutsInfo = document.getElementById('btn-shortcuts-info');
+    const modalShortcuts = document.getElementById('modal-shortcuts-guide');
+    const modalShortcutsClose = document.getElementById('modal-shortcuts-close');
+    const btnShortcutsOk = document.getElementById('btn-shortcuts-ok');
+
+    if (btnShortcutsInfo && modalShortcuts) {
+      btnShortcutsInfo.addEventListener('click', () => {
+        modalShortcuts.style.display = 'flex';
+      });
+    }
+    if (modalShortcutsClose && modalShortcuts) {
+      modalShortcutsClose.addEventListener('click', () => modalShortcuts.style.display = 'none');
+    }
+    if (btnShortcutsOk && modalShortcuts) {
+      btnShortcutsOk.addEventListener('click', () => modalShortcuts.style.display = 'none');
+    }
+
+    window.addEventListener('keydown', (e) => {
+      const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+      const isInput = activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select';
+
+      // Ctrl + K or '/' when not typing
+      if ((e.ctrlKey && e.key.toLowerCase() === 'k') || (!isInput && e.key === '/')) {
+        e.preventDefault();
+        const globalSearchBtn = document.getElementById('top-btn-global-search');
+        if (globalSearchBtn) globalSearchBtn.click();
+        return;
+      }
+
+      // Esc closes modals, drawer, preview
+      if (e.key === 'Escape') {
+        const drawer = document.getElementById('drawer-lead-detail');
+        if (drawer && drawer.style.display === 'flex') {
+          drawer.style.display = 'none';
+          return;
+        }
+        const preview = document.getElementById('in-app-web-preview');
+        if (preview && !preview.classList.contains('hidden')) {
+          preview.classList.add('hidden');
+          document.body.classList.remove('preview-open');
+          return;
+        }
+        document.querySelectorAll('.modal-backdrop').forEach(m => {
+          if (m.style.display === 'flex' || m.style.display === 'block') {
+            m.style.display = 'none';
+          }
+        });
+        return;
+      }
+
+      if (isInput) return;
+
+      // Views Navigation: 1, 2, 3
+      if (e.key === '1') {
+        const btnLeads = document.getElementById('nav-btn-leads');
+        if (btnLeads) btnLeads.click();
+      } else if (e.key === '2') {
+        const btnMap = document.getElementById('nav-btn-map');
+        if (btnMap) btnMap.click();
+      } else if (e.key === '3') {
+        const btnCal = document.getElementById('nav-btn-calendar');
+        if (btnCal) btnCal.click();
+      }
+
+      // Actions on active selected lead
+      if (state.selectedLead) {
+        if (e.key.toLowerCase() === 'c') {
+          copyCommercialPitch(state.selectedLead);
+        } else if (e.key.toLowerCase() === 'n') {
+          const notesTab = document.querySelector('.drawer-tab-btn[data-tab="tab-notes"]');
+          if (notesTab) notesTab.click();
+          const noteInput = document.getElementById('drawer-note-content');
+          if (noteInput) noteInput.focus();
+        } else if (e.key.toLowerCase() === 'w') {
+          const cleanPhone = (state.selectedLead.phone_e164 || state.selectedLead.phone_raw || '').replace(/[^0-9]/g, '');
+          if (cleanPhone.length >= 10 && state.selectedLead.has_whatsapp !== false) {
+            window.open(`https://wa.me/${cleanPhone}`, '_blank');
+            recordDailyAction('whatsapp');
+          }
+        }
+      }
+    });
+  }
+
   // Start initial loads
   initLiveReload();
+  initEventStream();
   loadInitialData();
+  initPhase9EventListeners();
+  initPhase10Features();
   checkSecurityLock();
   checkOnboardingInitial();
 });

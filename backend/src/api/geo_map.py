@@ -1,21 +1,28 @@
 import logging
+import re
 from typing import Dict, Any, List, Optional
 from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from src.db.connection import get_db_connection, execute_query
 from src.geo.bounds import MACRO_ZONES
+from src.geo.geocoder import geocode_location
 from src.queue.redis_queue import queue_manager
+from src.api.events_bus import event_bus
 
 logger = logging.getLogger("crm.api.geo_map")
 router = APIRouter(prefix="/api/v1/geo", tags=["Geo & Interactive Map"])
 
 
 class SweepRequest(BaseModel):
+    query_term: Optional[str] = None
+    location_query: Optional[str] = None
     zone_slug: Optional[str] = "zona-rio"
-    category_slug: str = "dentistas"
+    category_slug: Optional[str] = None
     custom_bbox: Optional[Dict[str, float]] = None
     cell_size_km: float = 1.0
+    max_depth: int = 2
+    max_results: int = 20
 
 
 @router.get("/zones")
@@ -57,6 +64,14 @@ def list_tijuana_zones():
         })
 
     return {"zones": zones_list, "default_center": [32.5149, -117.0382]}
+
+
+@router.get("/geocode")
+async def geocode_query(q: str = Query(..., min_length=2)):
+    result = await geocode_location(q)
+    if not result:
+        raise HTTPException(status_code=404, detail=f"No se pudo geocodificar la ubicacion '{q}'")
+    return result
 
 
 @router.get("/leads-markers")
@@ -111,7 +126,15 @@ async def trigger_geo_sweep(payload: SweepRequest):
     from src.api.jobs import create_job
     from src.models.schemas import ExtractionJobCreate, BoundingBox
 
+    raw_cat = payload.category_slug or payload.query_term or "dentistas"
+    clean_slug = re.sub(r"[^\w\s-]", "", raw_cat.lower()).strip()
+    category_slug = re.sub(r"[-\s]+", "-", clean_slug) or "dentistas"
+
+    location_name = payload.location_query or payload.zone_slug or "Tijuana"
+
     custom_bb = None
+    center_coords = [32.5149, -117.0382]
+
     if payload.custom_bbox:
         custom_bb = BoundingBox(
             min_lat=payload.custom_bbox["min_lat"],
@@ -119,20 +142,57 @@ async def trigger_geo_sweep(payload: SweepRequest):
             max_lat=payload.custom_bbox["max_lat"],
             max_lon=payload.custom_bbox["max_lon"]
         )
+        center_coords = [
+            (payload.custom_bbox["min_lat"] + payload.custom_bbox["max_lat"]) / 2,
+            (payload.custom_bbox["min_lon"] + payload.custom_bbox["max_lon"]) / 2
+        ]
+    elif payload.location_query and payload.location_query.strip():
+        geo_info = await geocode_location(payload.location_query.strip())
+        if geo_info and "bbox" in geo_info:
+            custom_bb = BoundingBox(
+                min_lat=geo_info["bbox"]["min_lat"],
+                min_lon=geo_info["bbox"]["min_lon"],
+                max_lat=geo_info["bbox"]["max_lat"],
+                max_lon=geo_info["bbox"]["max_lon"]
+            )
+            center_coords = [geo_info["center"]["lat"], geo_info["center"]["lon"]]
 
     job_create = ExtractionJobCreate(
-        category_slug=payload.category_slug,
-        zone_name=payload.zone_slug or "zona-rio",
+        category_slug=category_slug,
+        zone_name=location_name,
         custom_bbox=custom_bb,
-        cell_size_km=payload.cell_size_km
+        cell_size_km=payload.cell_size_km,
+        max_depth=payload.max_depth
     )
 
+    await event_bus.broadcast("status_update", {
+        "step": f"Buscando negocios de '{raw_cat}' en '{location_name}'..."
+    })
+
     job_telemetry = await create_job(job_create)
+
+    # Record recent search
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO recent_searches (category, location, results_count)
+                    VALUES (%s, %s, 0);
+                    """,
+                    (raw_cat, location_name)
+                )
+            conn.commit()
+    except Exception as exc:
+        logger.warning(f"Could not record recent search: {exc}")
+
     return {
         "status": "QUEUED",
         "job_id": str(job_telemetry.id),
-        "zone": payload.zone_slug,
-        "category": payload.category_slug
+        "zone": location_name,
+        "category": category_slug,
+        "center": center_coords,
+        "bbox": [custom_bb.min_lat, custom_bb.min_lon, custom_bb.max_lat, custom_bb.max_lon] if custom_bb else None
     }
 
 
@@ -170,6 +230,10 @@ def get_active_job():
 
     return {
         "has_active_job": True,
+        "status": j["status"],
+        "progress_pct": pct,
+        "new_leads_found": j["leads_found"],
+        "duplicates_filtered": j["leads_skipped"],
         "job": {
             "id": str(j["id"]),
             "category_slug": j["category_slug"],
@@ -198,3 +262,41 @@ def get_active_job():
             for c in cell_rows
         ]
     }
+
+
+class RecentSearchPayload(BaseModel):
+    category: str
+    location: str
+    results_count: int = 0
+
+
+@router.get("/recent-searches")
+def get_recent_searches():
+    rows = execute_query(
+        """
+        SELECT DISTINCT ON (category, location) id, category, location, results_count, searched_at
+        FROM recent_searches
+        ORDER BY category, location, searched_at DESC
+        LIMIT 8;
+        """
+    )
+    # Sort by searched_at desc
+    rows.sort(key=lambda r: r["searched_at"], reverse=True)
+    return rows[:8]
+
+
+@router.post("/recent-searches")
+def add_recent_search(payload: RecentSearchPayload):
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO recent_searches (category, location, results_count)
+                VALUES (%s, %s, %s)
+                RETURNING id;
+                """,
+                (payload.category.strip(), payload.location.strip(), payload.results_count)
+            )
+            rec_id = cur.fetchone()["id"]
+        conn.commit()
+    return {"id": str(rec_id), "status": "SUCCESS"}

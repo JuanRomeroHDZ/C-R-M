@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 import httpx
 from src.config import settings
 
@@ -35,6 +35,7 @@ class OSMExtractor:
         min_lon: float,
         max_lat: float,
         max_lon: float,
+        search_term: Optional[str] = None,
         timeout_seconds: int = 25
     ) -> str:
         bbox_str = f"{min_lat:.5f},{min_lon:.5f},{max_lat:.5f},{max_lon:.5f}"
@@ -43,6 +44,17 @@ class OSMExtractor:
             statements.append(f'  node["{k}"="{v}"]({bbox_str});')
             statements.append(f'  way["{k}"="{v}"]({bbox_str});')
             statements.append(f'  relation["{k}"="{v}"]({bbox_str});')
+
+        if search_term and search_term.strip():
+            clean_term = search_term.strip().replace('"', '')
+            statements.append(f'  node["name"~"{clean_term}",i]({bbox_str});')
+            statements.append(f'  way["name"~"{clean_term}",i]({bbox_str});')
+            statements.append(f'  relation["name"~"{clean_term}",i]({bbox_str});')
+
+        if not statements:
+            statements.append(f'  node["amenity"]({bbox_str});')
+            statements.append(f'  node["shop"]({bbox_str});')
+            statements.append(f'  node["office"]({bbox_str});')
 
         query_body = "\n".join(statements)
         query = f"""[out:json][timeout:{timeout_seconds}];
@@ -102,7 +114,7 @@ out center tags;"""
             logger.error(f"Failed to fetch from Overpass after {max_retries} retries: {last_error}")
         return []
 
-    def parse_element(self, element: Dict[str, Any], category_slug: str) -> Dict[str, Any]:
+    def parse_element(self, element: Dict[str, Any], category_slug: str, target_city: Optional[str] = None) -> Dict[str, Any]:
         tags = element.get("tags", {})
         el_type = element.get("type", "node")
         el_id = element.get("id")
@@ -129,7 +141,7 @@ out center tags;"""
         house_num = tags.get("addr:housenumber")
         suburb = tags.get("addr:suburb") or tags.get("addr:neighbourhood")
         postcode = tags.get("addr:postcode")
-        city = tags.get("addr:city") or "Tijuana"
+        city = tags.get("addr:city") or target_city or "Tijuana"
 
         address_parts = [p for p in [street, house_num, suburb, postcode, city] if p]
         address_raw = ", ".join(address_parts) if address_parts else None
@@ -155,8 +167,8 @@ out center tags;"""
             "house_number": house_num,
             "suburb": suburb,
             "postal_code": postcode,
-            "city": "Tijuana",
-            "state": "Baja California",
+            "city": city,
+            "state": tags.get("addr:state") or "Baja California",
             "country": "Mexico",
             "latitude": float(lat) if lat is not None else None,
             "longitude": float(lon) if lon is not None else None,
@@ -180,16 +192,27 @@ out center tags;"""
         min_lat: float,
         min_lon: float,
         max_lat: float,
-        max_lon: float
+        max_lon: float,
+        search_term: Optional[str] = None,
+        target_city: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        query = self.build_query(osm_tags, min_lat, min_lon, max_lat, max_lon)
+        query = self.build_query(
+            osm_tags,
+            min_lat,
+            min_lon,
+            max_lat,
+            max_lon,
+            search_term=search_term
+        )
         raw_elements = await self.fetch_elements(query)
 
         parsed_leads = []
         for el in raw_elements:
-            parsed = self.parse_element(el, category_slug)
+            parsed = self.parse_element(el, category_slug, target_city=target_city)
             # Require at least name
             if parsed["name"] and parsed["name"] != "Negocio Local Sin Nombre":
                 parsed_leads.append(parsed)
+
+        return parsed_leads
 
         return parsed_leads

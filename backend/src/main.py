@@ -25,6 +25,9 @@ from src.api.security import router as security_router
 from src.api.settings_advanced import router as settings_adv_router
 from src.api.geo_map import router as geo_map_router
 from src.api.metrics import router as metrics_router
+from src.api.stream import router as stream_router
+from src.api.diagnostics import router as diagnostics_router
+from src.api.preview import router as preview_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -95,6 +98,9 @@ app.include_router(security_router)
 app.include_router(settings_adv_router)
 app.include_router(geo_map_router)
 app.include_router(metrics_router)
+app.include_router(stream_router)
+app.include_router(diagnostics_router)
+app.include_router(preview_router)
 
 
 def check_postgres() -> Dict[str, Any]:
@@ -143,9 +149,9 @@ async def health(response: Response) -> Dict[str, Any]:
 def system_status() -> Dict[str, Any]:
     return {
         "system": "Sistema de Captacion, Prospeccion y CRM Local",
-        "version": "4.0.0",
-        "phase": "Fase 4 - Enriquecimiento de Contactos, Redirecciones, Calendario y Modo Desarrollador",
-        "city_coverage": "Tijuana, Baja California",
+        "version": "7.0.0",
+        "phase": "Fase 7 - Integracion Reactiva Extremo a Extremo, Chromium Headless y Cero Mock",
+        "city_coverage": "Tijuana y Cobertura Dinamica Nacional",
         "environment": settings.ENVIRONMENT,
         "status": "operational"
     }

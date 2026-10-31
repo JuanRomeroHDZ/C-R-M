@@ -48,6 +48,22 @@ El sistema prioriza la soberania de datos, ejecutandose integramente dentro del 
 - Normalizacion telefonica estricta bajo formato internacional E.164.
 - Normalizacion de dominios raiz eliminando protocolos, subdominios redundantes y rutas.
 - Evaluacion de similitud léxica mediante distancia de Levenshtein y proximidad geoespacial.
+- Deteccion visual de duplicados sospechosos (similitud entre 65% y 84%) con modal de comparacion lado a lado y lista blanca de exclusion.
+
+### 1.8 Visor Web Integrado y Arquitectura Ultra-Compacta (Fase 9)
+- Visor web enmarcado sin abandono de aplicacion mediante proxy inverso en segundo plano (`GET /api/v1/preview/proxy`).
+- Sanitizacion de cabeceras bloqueadoras de embebido (`X-Frame-Options`, `Content-Security-Policy`), neutralizacion de framebusting scripts (`top.location`) e inyeccion de `<base href="...">`.
+- Aislamiento en iframe sandbox estricto (`sandbox="allow-scripts allow-same-origin allow-forms"`).
+- Conmutador de dispositivo movil (375px) vs escritorio completo (100%).
+- Bloc de notas rapido integrado para captura comercial sin salir del visor web.
+- Botonera ultra-compacta de solo iconos con areas tactiles optimizadas (>=36px escritorio, >=42px movil) y tooltips flotantes.
+- Popovers informativos `(i)` para eliminar parrafos densos de explicacion.
+- Barra flotante inferior de acciones en lote (cambio de fase, etiquetas, exportacion CSV y papelera).
+- Historial persistente de busquedas recientes con re-ejecucion en 1 clic.
+- 3 Herramientas de Productividad Creativa:
+  1. Pastilla flotante con diagnostico visual de fallas tecnicas en tiempo real dentro del visor.
+  2. Selector rapido de angulo de contacto para WhatsApp por falla detectada (SSL, movil, Google Maps, general).
+  3. Barra de filtros rapidos solo-iconos (WhatsApp, telefono, sitio web, duplicados).
 - Borrado logico (soft delete) mediante columnas de marcado temporal (`deleted_at`).
 - Dialogos de doble confirmacion para toda accion irreversible.
 
@@ -107,6 +123,26 @@ El sistema prioriza la soberania de datos, ejecutandose integramente dentro del 
 - Panel de Metricas Comerciales con embudo visual de 12 fases, porcentaje de retencion, post-mortem de objeciones y distribucion por rubro y delegacion.
 - Recorrido guiado nativo Spotlight Onboarding de 6 pasos con persistencia local y en base de datos.
 
+### Fase 7: Erradicacion de Mock Data, Integracion Reactiva y Chromium Headless (Completada)
+- Politica estricta de Cero Datos Falsos (Zero Mock Policy): purga absoluta de semillas artificiales o ficticias; la interfaz opera exclusivamente con prospectos comerciales reales extraidos de internet.
+- Automatizacion de Chromium Headless en contenedor Docker con memoria compartida shm_size 2GB y aislamiento en memoria para ejecucion sin fallos de Playwright.
+- Geocodificador dinamico acoplado a Nominatim de OpenStreetMap con cache de persistencia en Redis de 30 dias para resolucion de coordenadas y poligonos de cualquier ciudad o delegacion.
+- Motor de busqueda libre y flexible para cualquier giro o categoria comercial con auto-aprovisionamiento y registro dinamico en base de datos.
+- Encadenamiento continuo de extremo a extremo: Extraccion -> Deduplicacion -> Auditoria tecnica de sitios web -> Enriquecimiento multicanal -> Calculo predictivo de aceptacion -> Calificacion automatica en etapa QUALIFIED.
+- Transmision reactiva en tiempo real mediante Server-Sent Events (SSE) a traves de endpoint /api/v1/stream/events conectado al frontend para insercion en vivo de prospectos y telemetria sin sondeo.
+- Panel de autodiagnostico integral (/api/v1/diagnostics/health-check) que verifica en tiempo real la salud y latencia de PostgreSQL, Redis, Chromium Headless, Nominatim, Overpass API y Google Maps.
+
+### Fase 8: Humanizacion Comercial Total, Herramientas de Velocidad y Productividad (Completada)
+- Erradicacion total de jerga tecnica en pantallas, etiquetas, modales y notificaciones (sustitucion por lenguaje comercial claro y natural).
+- Herramienta de Velocidad 1 (Modo Enfoque / Rafaga de Contacto): Vista de prospeccion secuencial un prospecto a la vez ordenado por calificacion con avance inmediato en menos de un segundo en acciones rapidas.
+- Herramienta de Velocidad 2 (Generador de Diagnostico Comercial Copiable en 1 Clic): Resumenes comerciales listos para ventas sin tecnicismos generados a partir de fallas reales detectadas.
+- Herramienta de Velocidad 3 (Indicador de Abierto Ahora y Filtro por Horario): Evaluacion en vivo del estado de apertura comercial en horario local de Tijuana con filtro dedicado.
+- Herramienta de Velocidad 4 (Buscador Global Rapido Ctrl+K y Etiquetas): Modal de busqueda instantanea multicampo y gestion de etiquetas comerciales personalizadas.
+- Herramienta Creativa 1 (Cotizador Express y Calculadora de Propuesta): Seleccion de paquetes de servicios en pesos mexicanos, guardado en base de datos y copia de propuesta formateada.
+- Herramienta Creativa 2 (Radar de Competencia Local): Comparativa contextual con negocios del mismo rubro en la zona para argumento de negociacion comercial.
+- Herramienta Creativa 3 (Atajos de Teclado Comerciales con una Sola Mano): Navegacion rapida con teclas J/K, WhatsApp con W, copia con C, notas con N y busqueda con Ctrl+K.
+- Paleta visual Notion/Obsidian en tonos pastel mate apagados (salvia, pizarra, arena y terracota) con bordes de 6 a 10 pixeles y cero destellos o neones.
+
 ---
 
 ## 3. Arquitectura Tecnica de Infraestructura (Fase 1)
@@ -143,3 +179,23 @@ El sistema prioriza la soberania de datos, ejecutandose integramente dentro del 
 ### 3.2 Persistencia de Datos
 - `crm_postgres_data`: Almacena tablas de contactos, transiciones de estados, auditorias y configuraciones.
 - `crm_redis_data`: Almacena colas de scraping, cache de auditorias web y estados efimeros.
+
+---
+
+## 4. Fase 10 Extendida: Auditoria, Reparacion Quirurgica y Suite de Productividad
+
+### 4.1 Ciclo de Vida y Edicion Permanente
+- Creacion manual con validacion inteligente (Nombre + Telefono o Sitio Web) y resolucion de colisiones mediante banner interactivo con boton "Abrir Ficha Existente".
+- Edicion en vivo dentro del Drawer para los 7 campos criticos y canales de redes sociales persistida en PostgreSQL sin recarga.
+- Re-evaluacion tecnica web en vivo mediante boton solo-icono con actualizacion reactiva de puntajes y argumentos comerciales.
+
+### 4.2 Suite de Velocidad Comercial y Bandeja "Para Hoy"
+- Bandeja diaria que consolida citas de agenda, reactivaciones vencidas de prospectos pospuestos y prospectos estancados (>48 horas).
+- Despacho en rafaga con Modo Enfoque integrado y reactivacion inteligente automatizada.
+- Modulo de Propuestas y Cierre Economico con clasificacion de montos ganados y perdidos por objecion en Metricas.
+- Ficha Comercial de Propuesta imprimible en 1 clic lista para PDF con `window.print()`.
+
+### 4.3 Arquitectura de Interfaz Libre de Desbordamientos
+- Montaje de popovers y tooltips explicativos en portal global fijado al `body` con clamp a bordes de pantalla para evitar recortes por `overflow: hidden`.
+- Estandarizacion de botones de accion rápida a solo-icono (36x36 px escritorio, 42x42 px movil).
+- Verificacion de diseno responsivo libre de desbordamientos en 5 resoluciones (360x800, 390x844, 768x1024, 1366x768, 1920x1080) mediante suite E2E con Playwright.

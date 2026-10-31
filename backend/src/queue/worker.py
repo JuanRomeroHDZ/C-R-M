@@ -1,13 +1,17 @@
 import asyncio
 import json
 import logging
+import re
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from src.config import settings
 from src.db.connection import get_db_connection, execute_query
 from src.extractors.osm_engine import OSMExtractor
 from src.extractors.gmaps_engine import GoogleMapsExtractor, CircuitBreakerTriggered
 from src.geo.quadtree import split_cell
+from src.api.events_bus import event_bus
+from src.analysis.pipeline import process_and_audit_lead
+from src.analysis.channel_enricher import enrich_lead_channels
 from src.queue.redis_queue import (
     queue_manager,
     STATE_QUEUED,
@@ -22,7 +26,7 @@ from src.queue.redis_queue import (
 logger = logging.getLogger("crm.queue.worker")
 
 
-def save_lead(lead: Dict[str, Any]) -> str:
+def save_lead(lead: Dict[str, Any]) -> Tuple[str, Optional[str]]:
     phone_clean = lead.get("phone_normalized") or lead.get("phone_raw")
     ext_id = lead.get("external_id")
     norm_domain = lead.get("normalized_domain")
@@ -41,7 +45,7 @@ def save_lead(lead: Dict[str, Any]) -> str:
                 (phone_clean, ext_id, norm_domain)
             )
             if cur.fetchone():
-                return "skipped"
+                return "skipped", None
 
     subcategories_json = json.dumps(lead.get("subcategories", []))
     metadata_json = json.dumps(lead.get("extra_metadata", {}))
@@ -65,7 +69,7 @@ def save_lead(lead: Dict[str, Any]) -> str:
         updated_at = NOW(),
         extra_metadata = leads.extra_metadata || EXCLUDED.extra_metadata
     WHERE leads.is_deleted = FALSE
-    RETURNING (xmax = 0) AS inserted;
+    RETURNING id, (xmax = 0) AS inserted;
     """
 
     params = (
@@ -101,8 +105,8 @@ def save_lead(lead: Dict[str, Any]) -> str:
             cur.execute(query, params)
             row = cur.fetchone()
             if row is None:
-                return "skipped"  # Record was soft-deleted, conflict update skipped
-            return "inserted" if row["inserted"] else "updated"
+                return "skipped", None  # Record was soft-deleted, conflict update skipped
+            return ("inserted" if row["inserted"] else "updated"), str(row["id"])
 
 
 class ExtractionWorker:
@@ -153,15 +157,18 @@ class ExtractionWorker:
         collected_leads: List[Dict[str, Any]] = []
 
         # 1. OpenStreetMap Extraction
-        if source in ("osm", "hybrid") and category_data["osm_tags"]:
+        if source in ("osm", "hybrid"):
             try:
+                search_kw = category_data.get("name") or category_data["slug"]
                 osm_leads = await self.osm_extractor.extract_cell(
-                    osm_tags=category_data["osm_tags"],
+                    osm_tags=category_data.get("osm_tags", []),
                     category_slug=category_data["slug"],
                     min_lat=min_lat,
                     min_lon=min_lon,
                     max_lat=max_lat,
-                    max_lon=max_lon
+                    max_lon=max_lon,
+                    search_term=search_kw,
+                    target_city=category_data.get("zone_name")
                 )
                 collected_leads.extend(osm_leads)
             except Exception as e:
@@ -170,8 +177,8 @@ class ExtractionWorker:
         # 2. Google Maps Extraction
         if source in ("google_maps", "hybrid"):
             is_blocked = await queue_manager.is_circuit_breaker_active()
-            if not is_blocked and category_data["keywords"]:
-                keyword = category_data["keywords"][0]
+            if not is_blocked:
+                keyword = category_data["keywords"][0] if category_data.get("keywords") else category_data["slug"]
                 try:
                     gmaps_leads = await self.gmaps_extractor.search_cell(
                         keyword=keyword,
@@ -179,7 +186,8 @@ class ExtractionWorker:
                         min_lat=min_lat,
                         min_lon=min_lon,
                         max_lat=max_lat,
-                        max_lon=max_lon
+                        max_lon=max_lon,
+                        location_name=category_data.get("zone_name")
                     )
                     collected_leads.extend(gmaps_leads)
                 except CircuitBreakerTriggered as cb_err:
@@ -240,13 +248,68 @@ class ExtractionWorker:
 
             return {"status": "SPLIT", "leads_found": len(collected_leads), "leads_saved": saved_count}
 
-        # 4. Save leads to database
+        # 4. Save leads to database and chain audit + enrichment + streaming
         saved_count = 0
         skipped_count = 0
         for lead in collected_leads:
-            res = save_lead(lead)
-            if res in ("inserted", "updated"):
+            res, lead_id = save_lead(lead)
+            if res in ("inserted", "updated") and lead_id:
                 saved_count += 1
+                try:
+                    await event_bus.broadcast("status_update", {
+                        "step": f"Analizando oportunidad comercial: {lead['name']}...",
+                        "job_id": job_id
+                    })
+                    # Chain technical web audit and lead scoring
+                    await process_and_audit_lead(lead_id)
+                    # Chain channel enrichment (socials & emails)
+                    enrich_lead_channels(lead_id)
+
+                    from src.analysis.pitch_generator import generate_commercial_pitch
+                    from src.analysis.opening_hours import evaluate_opening_hours
+                    generated_pitch = generate_commercial_pitch(lead_id)
+
+                    fl_rows = execute_query(
+                        """
+                        SELECT id, name, category_slug, primary_category, latitude, longitude,
+                               phone_e164, phone_raw, has_whatsapp, acceptance_probability_pct,
+                               technical_health_score, lifecycle_stage, website, city,
+                               opening_hours_raw, tags, deal_value_estimated, commercial_pitch
+                        FROM leads WHERE id = %s;
+                        """,
+                        (lead_id,)
+                    )
+                    if fl_rows:
+                        fl = fl_rows[0]
+                        wa_url = None
+                        if fl.get("phone_e164"):
+                            clean_phone = re.sub(r"[^\d]", "", fl["phone_e164"])
+                            wa_url = f"https://wa.me/{clean_phone}?text=Hola%2C%20buen%20d%C3%ADa."
+
+                        is_open, open_label = evaluate_opening_hours(fl.get("opening_hours_raw"))
+
+                        await event_bus.broadcast("lead_captured", {
+                            "id": str(fl["id"]),
+                            "name": fl["name"],
+                            "category": fl["category_slug"],
+                            "primary_category": fl.get("primary_category"),
+                            "lat": float(fl["latitude"]) if fl.get("latitude") else None,
+                            "lon": float(fl["longitude"]) if fl.get("longitude") else None,
+                            "phone": fl.get("phone_e164") or fl.get("phone_raw") or "Sin tel",
+                            "score": round(float(fl["acceptance_probability_pct"] or 0)),
+                            "health_score": round(float(fl["technical_health_score"] or 0)),
+                            "stage": fl["lifecycle_stage"],
+                            "website": fl.get("website"),
+                            "city": fl.get("city"),
+                            "whatsapp_url": wa_url,
+                            "is_open_now": is_open,
+                            "open_status_label": open_label,
+                            "commercial_pitch": fl.get("commercial_pitch") or generated_pitch,
+                            "deal_value_estimated": float(fl["deal_value_estimated"]) if fl.get("deal_value_estimated") is not None else None,
+                            "tags": fl.get("tags") or []
+                        })
+                except Exception as chain_err:
+                    logger.warning(f"Error in chained processing for lead {lead_id}: {chain_err}")
             else:
                 skipped_count += 1
 
@@ -272,7 +335,7 @@ class ExtractionWorker:
 
     async def execute_job(self, job_id: str):
         job_rows = execute_query(
-            "SELECT id, category_slug, source, config_json, status FROM extraction_jobs WHERE id = %s;",
+            "SELECT id, category_slug, zone_name, source, config_json, status FROM extraction_jobs WHERE id = %s;",
             (job_id,)
         )
         if not job_rows:
@@ -287,6 +350,7 @@ class ExtractionWorker:
         max_depth = config.get("max_depth", 3)
 
         category_data = await self.get_category_data(cat_slug)
+        category_data["zone_name"] = job.get("zone_name")
 
         with get_db_connection() as conn:
             with conn.cursor() as cur:

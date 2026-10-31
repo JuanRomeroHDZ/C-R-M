@@ -75,7 +75,10 @@ class GoogleMapsExtractor:
             user_agent=ua,
             viewport=vp,
             locale="es-MX",
-            timezone_id="America/Tijuana"
+            timezone_id="America/Tijuana",
+            extra_http_headers={
+                "Accept-Language": "es-MX,es;q=0.9,en;q=0.8"
+            }
         )
         page = await context.new_page()
 
@@ -146,14 +149,16 @@ class GoogleMapsExtractor:
         min_lon: float,
         max_lat: float,
         max_lon: float,
-        max_results: int = 15
+        max_results: int = 15,
+        location_name: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         center_lat = (min_lat + max_lat) / 2.0
         center_lon = (min_lon + max_lon) / 2.0
-        search_query = urllib.parse.quote(keyword)
+        full_query = f"{keyword} en {location_name}" if location_name else keyword
+        search_query = urllib.parse.quote(full_query)
         url = f"https://www.google.com/maps/search/{search_query}/@{center_lat:.6f},{center_lon:.6f},15z?hl=es"
 
-        logger.info(f"Google Maps scrape query '{keyword}' at ({center_lat:.4f}, {center_lon:.4f})")
+        logger.info(f"Google Maps scrape query '{full_query}' at ({center_lat:.4f}, {center_lon:.4f})")
         context, page = await self._setup_page()
 
         leads = []

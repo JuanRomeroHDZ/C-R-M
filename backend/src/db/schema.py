@@ -303,6 +303,32 @@ CREATE INDEX IF NOT EXISTS idx_leads_lifecycle ON leads(lifecycle_stage);
 CREATE INDEX IF NOT EXISTS idx_leads_deleted ON leads(is_deleted);
 CREATE INDEX IF NOT EXISTS idx_leads_geo ON leads(latitude, longitude);
 CREATE INDEX IF NOT EXISTS idx_grid_cells_job ON extraction_grid_cells(job_id, status);
+
+-- Phase 8 Migrations: Tags, Deal Value Estimations and Commercial Pitches
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS deal_value_estimated NUMERIC(10, 2);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS commercial_pitch TEXT;
+CREATE INDEX IF NOT EXISTS idx_leads_tags ON leads USING gin (tags);
+
+-- Phase 9 Migrations: Deduplication Whitelist and Recent Searches
+CREATE TABLE IF NOT EXISTS deduplication_whitelist (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    lead_a_id UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+    lead_b_id UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+    reviewed_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    CONSTRAINT uq_lead_pair UNIQUE (lead_a_id, lead_b_id)
+);
+CREATE INDEX IF NOT EXISTS idx_dedup_whitelist_a ON deduplication_whitelist(lead_a_id);
+CREATE INDEX IF NOT EXISTS idx_dedup_whitelist_b ON deduplication_whitelist(lead_b_id);
+
+CREATE TABLE IF NOT EXISTS recent_searches (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    category VARCHAR(255) NOT NULL,
+    location VARCHAR(255) NOT NULL,
+    results_count INT DEFAULT 0,
+    searched_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_recent_searches_time ON recent_searches(searched_at DESC);
 """
 
 INITIAL_SEEDS = [

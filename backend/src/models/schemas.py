@@ -171,3 +171,47 @@ class LeadOut(BaseModel):
     loss_reason: Optional[str] = None
     is_stagnant: bool = False
     stagnant_hours: int = 0
+    tags: List[str] = Field(default_factory=list)
+    deal_value_estimated: Optional[float] = None
+    proposal_service: Optional[str] = None
+    proposal_currency: Optional[str] = "MXN"
+    proposal_notes: Optional[str] = None
+    commercial_pitch: Optional[str] = None
+    is_open_now: Optional[bool] = None
+    open_status_label: Optional[str] = None
+
+
+class LeadTagsUpdate(BaseModel):
+    tags: List[str]
+
+
+class LeadEstimateRequest(BaseModel):
+    services: List[str] = Field(default_factory=list)
+    custom_amount: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class LeadPitchUpdate(BaseModel):
+    pitch: str
+
+
+class BatchStageRequest(BaseModel):
+    lead_ids: List[UUID]
+    stage: str
+    reason: Optional[str] = None
+
+
+class BatchTagsRequest(BaseModel):
+    lead_ids: List[UUID]
+    action: str = Field(default="add", pattern="^(add|remove)$")
+    tag: str
+
+
+class BatchTrashRequest(BaseModel):
+    lead_ids: List[UUID]
+    reason: Optional[str] = "Descarte masivo en lote"
+
+
+class BatchExportRequest(BaseModel):
+    lead_ids: List[UUID]
+

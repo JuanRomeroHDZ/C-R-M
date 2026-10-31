@@ -110,17 +110,56 @@ def get_metrics_dashboard():
     )
     overall_avg = float(overall_avg_row[0]["avg"]) if overall_avg_row and overall_avg_row[0]["avg"] is not None else 0.0
 
+    # 6. Financial closure metrics (FASE 10)
+    won_val_row = execute_query(
+        "SELECT COALESCE(SUM(deal_value_estimated), 0) as total_won FROM leads WHERE lifecycle_stage = 'CLOSED_WON' AND is_deleted = FALSE;"
+    )
+    total_won_value = float(won_val_row[0]["total_won"]) if won_val_row else 0.0
+
+    lost_val_row = execute_query(
+        "SELECT COALESCE(SUM(deal_value_estimated), 0) as total_lost FROM leads WHERE lifecycle_stage IN ('CLOSED_LOST', 'REGRETTED') AND is_deleted = FALSE;"
+    )
+    total_lost_value = float(lost_val_row[0]["total_lost"]) if lost_val_row else 0.0
+
+    financial_regret_rows = execute_query(
+        """
+        SELECT COALESCE(regret_reason, loss_reason, 'No especificado') as reason,
+               count(*) as count,
+               COALESCE(SUM(deal_value_estimated), 0)::float as total_amount
+        FROM leads
+        WHERE lifecycle_stage IN ('REGRETTED', 'CLOSED_LOST') AND is_deleted = FALSE
+        GROUP BY 1
+        ORDER BY total_amount DESC, count DESC;
+        """
+    )
+
+    proposals_rows = execute_query(
+        """
+        SELECT COALESCE(proposal_service, 'General') as service,
+               count(*) as count,
+               COALESCE(SUM(deal_value_estimated), 0)::float as total_amount
+        FROM leads
+        WHERE deal_value_estimated IS NOT NULL AND is_deleted = FALSE
+        GROUP BY 1
+        ORDER BY total_amount DESC;
+        """
+    )
+
     return {
         "kpis": {
             "total_leads": total_leads,
             "contacted_leads": contacted_count,
             "closed_won": won_count,
             "closed_lost": lost_count,
-            "overall_avg_score": overall_avg
+            "overall_avg_score": overall_avg,
+            "total_won_value": total_won_value,
+            "total_lost_value": total_lost_value
         },
         "funnel": funnel,
         "regret_breakdown": regret_reasons_rows,
         "loss_breakdown": loss_reasons_rows,
+        "financial_regret_breakdown": financial_regret_rows,
+        "proposals_summary": proposals_rows,
         "category_distribution": cat_rows,
         "zone_distribution": zone_rows
     }
